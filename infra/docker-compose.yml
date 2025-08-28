@@ -1,0 +1,53 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: rapex
+      POSTGRES_USER: rapex
+      POSTGRES_PASSWORD: rapex_pass
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ../services/backend
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    env_file:
+      - ../services/backend/.env
+    volumes:
+      - ../services/backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+  realtime:
+    build: ../services/realtime
+    command: node index.js
+    env_file:
+      - ../services/backend/.env
+    volumes:
+      - ../services/realtime:/app
+    ports:
+      - "4000:4000"
+    depends_on:
+      - redis
+
+  web:
+    build: ../services/web
+    command: npm run dev
+    volumes:
+      - ../services/web:/app
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:
