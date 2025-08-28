@@ -56,6 +56,8 @@ class Merchant(BaseUser):
     barangay = models.CharField(max_length=100)
     street_name = models.CharField(max_length=200)
     house_number = models.CharField(max_length=50)
+    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     settlement_emails = models.JSONField(default=list, blank=True)
     withdrawal_option = models.CharField(max_length=100, blank=True)
     profile_picture = models.URLField(blank=True)
@@ -83,3 +85,41 @@ class User(BaseUser):
     status = models.IntegerField(choices=[(0, 'Active'), (1, 'Banned'), (2, 'Frozen'), (3, 'Deleted'), (4, 'Unverified')], default=4)
     profile_picture = models.URLField(blank=True)
     date_joined = models.DateTimeField(auto_now_add=True)
+
+
+class MerchantDocument(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    merchant = models.ForeignKey(Merchant, on_delete=models.CASCADE, related_name='merchant_documents')
+    document_type = models.CharField(max_length=50)  # 'dti_sec', 'bir_tin', 'barangay_permit', 'additional'
+    file_url = models.URLField()
+    original_filename = models.CharField(max_length=255)
+    file_size = models.IntegerField()  # in bytes
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    verified = models.BooleanField(default=False)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(Admin, on_delete=models.SET_NULL, null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ['merchant', 'document_type']
+
+
+class EmailVerification(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField()
+    otp_code = models.CharField(max_length=6)
+    purpose = models.CharField(max_length=50, choices=[
+        ('merchant_signup', 'Merchant Signup'),
+        ('password_reset', 'Password Reset'),
+        ('email_change', 'Email Change')
+    ])
+    expires_at = models.DateTimeField()
+    verified = models.BooleanField(default=False)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['email', 'purpose', 'verified']),
+            models.Index(fields=['expires_at']),
+        ]
