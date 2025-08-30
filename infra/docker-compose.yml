@@ -46,8 +46,12 @@ services:
     command: npm run dev
     volumes:
       - ../services/web:/app
+      - /app/node_modules
     ports:
       - "3000:3000"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
 
 volumes:
   db_data:

@@ -28,6 +28,10 @@ class Admin(BaseUser):
     status = models.IntegerField(choices=[(0, 'Active'), (1, 'Banned'), (2, 'Frozen'), (3, 'Deleted'), (4, 'Unverified')], default=0)
     profile_picture = models.URLField(blank=True)
     is_superuser = models.BooleanField(default=False)
+    
+    # OTP fields for password reset
+    otp_code = models.CharField(max_length=6, null=True, blank=True)
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
     date_joined = models.DateTimeField(auto_now_add=True)
 
 
@@ -36,6 +40,7 @@ class Merchant(BaseUser):
     owner_name = models.CharField(max_length=200)
     merchant_host_id = models.CharField(max_length=100, blank=True)
     status = models.IntegerField(choices=[(0, 'Active'), (1, 'Banned'), (2, 'Frozen'), (3, 'Deleted'), (4, 'Unverified')], default=4)
+    business_registration = models.IntegerField(choices=[(0, 'Registered (VAT Included)'), (1, 'Registered (NON-VAT)'), (2, 'Unregistered')], default=2)
     mcc = models.IntegerField(choices=[
         (0, 'Food Stall'), (1, 'Pre-loved'), (2, 'Fresh Market'), (3, 'Hardware'),
         (4, 'Grocery Store'), (5, 'Sari-Sari Store'), (6, 'Pharmacy'), (7, 'Online Seller'),
@@ -67,6 +72,13 @@ class Merchant(BaseUser):
     date_joined = models.DateTimeField(auto_now_add=True)
     verified_at = models.DateTimeField(null=True, blank=True)
     verified_by = models.UUIDField(null=True, blank=True)  # Admin who verified
+    
+    # OTP fields for verification
+    otp_code = models.CharField(max_length=6, null=True, blank=True)
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+    
+    # Unique merchant identifier for registration process
+    merchant_id = models.CharField(max_length=50, unique=True, null=True, blank=True)
 
 
 class Rider(BaseUser):

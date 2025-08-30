@@ -16,7 +16,7 @@ class AdminSerializer(serializers.ModelSerializer):
 class MerchantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Merchant
-        fields = ['id', 'username', 'email', 'merchant_name', 'owner_name', 'mcc', 'status', 'phone']
+        fields = ['id', 'username', 'email', 'merchant_name', 'owner_name', 'mcc', 'business_registration', 'status', 'phone']
 
 
 class MerchantSignupSerializer(serializers.ModelSerializer):
@@ -26,7 +26,7 @@ class MerchantSignupSerializer(serializers.ModelSerializer):
         model = Merchant
         fields = [
             'username', 'email', 'password', 'confirm_password',
-            'merchant_name', 'owner_name', 'phone', 'mcc',
+            'merchant_name', 'owner_name', 'phone', 'mcc', 'business_registration',
             'zipcode', 'province', 'city_municipality', 'barangay',
             'street_name', 'house_number', 'latitude', 'longitude',
             'settlement_emails', 'withdrawal_option'
@@ -85,3 +85,25 @@ class VerifyOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp_code = serializers.CharField(max_length=6)
     purpose = serializers.CharField(max_length=50)
+
+
+class SendOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    purpose = serializers.CharField(max_length=50, default='password_reset')
+    user_type = serializers.ChoiceField(choices=[('merchant', 'Merchant'), ('admin', 'Admin')], default='merchant')
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp_code = serializers.CharField(max_length=6)
+    new_password = serializers.CharField(min_length=8)
+    user_type = serializers.ChoiceField(choices=[('merchant', 'Merchant'), ('admin', 'Admin')], default='merchant')
+
+
+class MerchantLocationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Merchant
+        fields = [
+            'zipcode', 'province', 'city_municipality', 'barangay',
+            'street_name', 'house_number', 'latitude', 'longitude'
+        ]
