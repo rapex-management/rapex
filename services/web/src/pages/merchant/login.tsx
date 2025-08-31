@@ -37,6 +37,12 @@ const MerchantLogin = () => {
     e.preventDefault();
     setIsLoading(true);
 
+    console.log('🔐 Login form submitted:', { 
+      identifier: formData.identifier, 
+      password: '***',
+      timestamp: new Date().toISOString()
+    });
+
     try {
       const response = await fetch('/api/proxy/merchant/login', {
         method: 'POST',
@@ -49,24 +55,52 @@ const MerchantLogin = () => {
         }),
       });
 
+      console.log('🌐 Login response received:', {
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText
+      });
+
       const data = await response.json();
+      console.log('📦 Response data:', {
+        ...data,
+        access: data.access ? `${data.access.substring(0, 30)}...` : 'missing',
+        refresh: data.refresh ? `${data.refresh.substring(0, 30)}...` : 'missing'
+      });
 
       if (response.ok) {
+        // Store authentication data
         localStorage.setItem('merchant_token', data.access);
         localStorage.setItem('merchant_refresh_token', data.refresh);
         localStorage.setItem('merchant', JSON.stringify({
           id: data.id,
-          business_name: data.business_name,
           email: data.email,
-          phone_number: data.phone_number
+          merchant_name: data.merchant_name,
+          owner_name: data.owner_name,
+          phone: data.phone,
+          status: data.status,
+          username: data.username
         }));
+        
+        console.log('💾 Data stored in localStorage:', {
+          token_stored: !!localStorage.getItem('merchant_token'),
+          refresh_stored: !!localStorage.getItem('merchant_refresh_token'),
+          merchant_stored: !!localStorage.getItem('merchant'),
+          merchant_data: JSON.parse(localStorage.getItem('merchant') || '{}')
+        });
         
         showNotification('success', 'Welcome Back!', 'Login successful. Redirecting to dashboard...');
         
+        console.log('🔄 Starting navigation to dashboard...');
+        
+        // Immediate redirect without delay for better UX
         setTimeout(() => {
-          router.push('/merchant/dashboard');
-        }, 1500);
+          console.log('🏃‍♂️ Executing navigation to /merchant/dashboard');
+          // Use window.location for more reliable navigation
+          window.location.href = '/merchant/dashboard';
+        }, 500);
       } else {
+        console.error('❌ Login failed with response:', data);
         // Handle specific status codes
         if (data.status_code === 'PENDING_APPROVAL') {
           showNotification('info', 'Account Under Review', data.message || 'Your account is pending approval.');
@@ -85,7 +119,8 @@ const MerchantLogin = () => {
           showNotification('error', 'Login Failed', data.detail || 'Invalid credentials. Please try again.');
         }
       }
-    } catch {
+    } catch (error) {
+      console.error('💥 Login error:', error);
       showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');
     } finally {
       setIsLoading(false);

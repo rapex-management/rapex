@@ -1,24 +1,113 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { Sidebar } from '../../components/ui/Sidebar';
 import { Card } from '../../components/ui/Card';
 import MerchantAuthGuard from '../../components/auth/MerchantAuthGuard';
+import Notification from '../../components/ui/Notification';
+
+interface DashboardStats {
+  today_orders: number;
+  total_orders: number;
+  pending_orders: number;
+  today_revenue: number;
+  total_revenue: number;
+  total_products: number;
+  active_products: number;
+  merchant_rating: number;
+}
+
+interface MerchantInfo {
+  id: string;
+  business_name: string;
+  owner_name: string;
+  email: string;
+  phone: string;
+  status: number;
+  date_joined: string;
+}
+
+interface DashboardData {
+  merchant_info: MerchantInfo;
+  statistics: DashboardStats;
+  quick_stats: {
+    orders_this_week: number;
+    revenue_this_week: number;
+    orders_this_month: number;
+    revenue_this_month: number;
+  };
+}
 
 const MerchantDashboard = () => {
-  const [user, setUser] = useState<any>(null);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notification, setNotification] = useState({
+    isVisible: false,
+    type: 'success' as 'success' | 'error' | 'warning' | 'info',
+    title: '',
+    message: ''
+  });
+  
   const router = useRouter();
 
-  useEffect(() => {
-    const token = localStorage.getItem('merchant_token');
-    const merchantData = localStorage.getItem('merchant');
-    
-    if (!token || !merchantData) {
-      router.push('/merchant/login');
-      return;
+  const showNotification = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+    setNotification({
+      isVisible: true,
+      type,
+      title,
+      message
+    });
+  };
+
+  const hideNotification = () => {
+    setNotification(prev => ({ ...prev, isVisible: false }));
+  };
+
+  const loadDashboardData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('merchant_token');
+      
+      if (!token) {
+        router.push('/merchant/login');
+        return;
+      }
+
+      const response = await fetch('/api/proxy/merchant/dashboard', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem('merchant_token');
+        localStorage.removeItem('merchant_refresh_token');
+        localStorage.removeItem('merchant');
+        router.push('/merchant/login');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Failed to load dashboard data: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setDashboardData(data);
+      setError(null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load dashboard data';
+      setError(errorMessage);
+      showNotification('error', 'Error', errorMessage);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setUser(JSON.parse(merchantData));
   }, [router]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   const handleLogout = async () => {
     try {
@@ -38,6 +127,40 @@ const MerchantDashboard = () => {
       localStorage.removeItem('merchant');
       router.push('/merchant/login');
     }
+  };
+
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      minimumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  const getStatusText = (status: number): string => {
+    const statusMap: { [key: number]: string } = {
+      0: 'Active',
+      1: 'Inactive',
+      2: 'Suspended',
+      3: 'Pending',
+      4: 'Rejected',
+      5: 'Under Review',
+      6: 'Banned'
+    };
+    return statusMap[status] || 'Unknown';
+  };
+
+  const getStatusColor = (status: number): string => {
+    const colorMap: { [key: number]: string } = {
+      0: 'text-green-600 bg-green-100',
+      1: 'text-gray-600 bg-gray-100',
+      2: 'text-red-600 bg-red-100',
+      3: 'text-yellow-600 bg-yellow-100',
+      4: 'text-red-600 bg-red-100',
+      5: 'text-blue-600 bg-blue-100',
+      6: 'text-red-600 bg-red-100'
+    };
+    return colorMap[status] || 'text-gray-600 bg-gray-100';
   };
 
   const sidebarItems = [
@@ -90,58 +213,16 @@ const MerchantDashboard = () => {
       ]
     },
     {
-      id: 'fresh-products',
-      label: 'Fresh Products',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-        </svg>
-      ),
-      children: [
-        { id: 'my-fresh-products', label: 'My Fresh Products', href: '/merchant/fresh-products', icon: <div className="w-2 h-2 bg-green-500 rounded-full"></div> },
-        { id: 'add-fresh-product', label: 'Add New Fresh Products', href: '/merchant/fresh-products/add', icon: <div className="w-2 h-2 bg-green-600 rounded-full"></div> },
-        { id: 'bulk-upload-fresh', label: 'Bulk Upload', href: '/merchant/fresh-products/bulk', icon: <div className="w-2 h-2 bg-green-700 rounded-full"></div> },
-      ]
-    },
-    {
-      id: 'menu',
-      label: 'Menu',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-        </svg>
-      ),
-      children: [
-        { id: 'my-menu', label: 'My Menu', href: '/merchant/menu', icon: <div className="w-2 h-2 bg-orange-500 rounded-full"></div> },
-        { id: 'add-menu', label: 'Add New Menu', href: '/merchant/menu/add', icon: <div className="w-2 h-2 bg-orange-600 rounded-full"></div> },
-        { id: 'bulk-upload-menu', label: 'Bulk Upload', href: '/merchant/menu/bulk', icon: <div className="w-2 h-2 bg-orange-700 rounded-full"></div> },
-      ]
-    },
-    {
-      id: 'preloved',
-      label: 'Pre-loved Products',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-        </svg>
-      ),
-      children: [
-        { id: 'my-preloved', label: 'My Pre-loved Products', href: '/merchant/preloved', icon: <div className="w-2 h-2 bg-pink-500 rounded-full"></div> },
-        { id: 'add-preloved', label: 'Add New Pre-loved Products', href: '/merchant/preloved/add', icon: <div className="w-2 h-2 bg-pink-600 rounded-full"></div> },
-        { id: 'bulk-upload-preloved', label: 'Bulk Upload', href: '/merchant/preloved/bulk', icon: <div className="w-2 h-2 bg-pink-700 rounded-full"></div> },
-      ]
-    },
-    {
       id: 'analytics',
-      label: 'Performance/Analytics',
+      label: 'Analytics',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
       ),
       children: [
-        { id: 'sales-reports', label: 'Sales Reports', href: '/merchant/analytics/sales', icon: <div className="w-2 h-2 bg-indigo-500 rounded-full"></div> },
-        { id: 'business-insights', label: 'Business Insights', href: '/merchant/analytics/insights', icon: <div className="w-2 h-2 bg-indigo-600 rounded-full"></div> },
+        { id: 'sales-report', label: 'Sales Report', href: '/merchant/analytics/sales', icon: <div className="w-2 h-2 bg-green-500 rounded-full"></div> },
+        { id: 'performance', label: 'Performance', href: '/merchant/analytics/performance', icon: <div className="w-2 h-2 bg-blue-500 rounded-full"></div> },
       ]
     },
     {
@@ -159,31 +240,6 @@ const MerchantDashboard = () => {
       ]
     },
     {
-      id: 'notifications',
-      label: 'Notifications',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-5 5v-5zM4 17h8v5l-5-5M4 4h16v9H4V4z" />
-        </svg>
-      ),
-      children: [
-        { id: 'announcements', label: 'Announcements', href: '/merchant/notifications/announcements', icon: <div className="w-2 h-2 bg-yellow-500 rounded-full"></div> },
-        { id: 'broadcast', label: 'Broadcast Notification', href: '/merchant/notifications/broadcast', icon: <div className="w-2 h-2 bg-yellow-600 rounded-full"></div> },
-      ]
-    },
-    {
-      id: 'customer-service',
-      label: 'Customer Service',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
-      ),
-      children: [
-        { id: 'messages', label: 'Messages/Chats', href: '/merchant/customer-service/messages', icon: <div className="w-2 h-2 bg-blue-500 rounded-full"></div> },
-      ]
-    },
-    {
       id: 'store-settings',
       label: 'Store Settings',
       icon: (
@@ -196,54 +252,96 @@ const MerchantDashboard = () => {
         { id: 'profile-settings', label: 'Profile Settings', href: '/merchant/settings/profile', icon: <div className="w-2 h-2 bg-gray-500 rounded-full"></div> },
       ]
     },
-    {
-      id: 'help',
-      label: 'Help & Support',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-      children: [
-        { id: 'chat-admin', label: 'Chat with Admin', href: '/merchant/help/chat', icon: <div className="w-2 h-2 bg-red-500 rounded-full"></div> },
-        { id: 'faqs', label: 'FAQs', href: '/merchant/help/faqs', icon: <div className="w-2 h-2 bg-red-600 rounded-full"></div> },
-      ]
-    },
   ];
 
-  if (!user) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
 
+  if (error || !dashboardData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 text-red-500">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 18.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Failed to Load Dashboard</h3>
+          <p className="text-gray-600 mb-4">{error || 'Unable to load dashboard data'}</p>
+          <button
+            onClick={loadDashboardData}
+            className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const { merchant_info, statistics } = dashboardData;
+
   return (
     <MerchantAuthGuard requireActive={false}>
       <div className="flex h-screen bg-gray-50">
-      <Sidebar
-        items={sidebarItems}
-        userInfo={{
-          name: user.merchant_name || user.owner_name || user.username,
-          email: user.email,
-          role: 'Merchant'
-        }}
-        onLogout={handleLogout}
-      />
-      
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-7xl mx-auto">
+        <Notification
+          isVisible={notification.isVisible}
+          type={notification.type}
+          title={notification.title}
+          message={notification.message}
+          onClose={hideNotification}
+        />
+        
+        <Sidebar
+          items={sidebarItems}
+          onLogout={handleLogout}
+          userInfo={{
+            name: merchant_info.owner_name,
+            email: merchant_info.email,
+            role: 'Merchant'
+          }}
+        />
+
+        <div className="flex-1 overflow-auto">
+          <div className="p-6">
             {/* Header */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900">Merchant Dashboard</h1>
-              <p className="text-gray-600 mt-2">Welcome back, {user.merchant_name || user.owner_name}! Manage your business efficiently.</p>
+            <div className="mb-6">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Welcome back, {merchant_info.owner_name}!
+                  </h1>
+                  <p className="text-gray-600 mt-1">
+                    {merchant_info.business_name}
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(merchant_info.status)}`}>
+                    {getStatusText(merchant_info.status)}
+                  </span>
+                  <button
+                    onClick={loadDashboardData}
+                    className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Refresh"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {/* Statistics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
               <Card>
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
@@ -254,8 +352,8 @@ const MerchantDashboard = () => {
                     </div>
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Today's Orders</p>
-                    <p className="text-2xl font-bold text-gray-900">42</p>
+                    <p className="text-sm font-medium text-gray-500">Today&apos;s Orders</p>
+                    <p className="text-2xl font-bold text-gray-900">{statistics.today_orders}</p>
                   </div>
                 </div>
               </Card>
@@ -270,8 +368,8 @@ const MerchantDashboard = () => {
                     </div>
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Today's Revenue</p>
-                    <p className="text-2xl font-bold text-gray-900">₱15,420</p>
+                    <p className="text-sm font-medium text-gray-500">Today&apos;s Revenue</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(statistics.today_revenue)}</p>
                   </div>
                 </div>
               </Card>
@@ -287,7 +385,7 @@ const MerchantDashboard = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500">Total Products</p>
-                    <p className="text-2xl font-bold text-gray-900">1,247</p>
+                    <p className="text-2xl font-bold text-gray-900">{statistics.total_products}</p>
                   </div>
                 </div>
               </Card>
@@ -303,20 +401,20 @@ const MerchantDashboard = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-gray-500">Rating</p>
-                    <p className="text-2xl font-bold text-gray-900">4.8</p>
+                    <p className="text-2xl font-bold text-gray-900">{statistics.merchant_rating}</p>
                   </div>
                 </div>
               </Card>
             </div>
 
-            {/* Quick Actions & Recent Orders */}
+            {/* Quick Actions & Recent Activity */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <a href="/merchant/products/add" className="p-4 bg-gradient-primary-soft rounded-lg text-center hover:shadow-md transition-shadow">
+                  <a href="/merchant/products/add" className="p-4 bg-gradient-to-r from-orange-400 to-pink-500 rounded-lg text-center hover:shadow-md transition-shadow">
                     <svg className="w-8 h-8 mx-auto mb-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
@@ -349,33 +447,31 @@ const MerchantDashboard = () => {
 
               <Card>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Recent Orders</h3>
-                  <a href="/merchant/orders" className="text-sm text-primary-600 hover:text-primary-500">
-                    View all
-                  </a>
+                  <h3 className="text-lg font-semibold text-gray-900">Business Overview</h3>
                 </div>
                 <div className="space-y-4">
-                  {[1, 2, 3, 4].map((item) => (
-                    <div key={item} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">Order #ORD-2024-{1000 + item}</p>
-                        <p className="text-xs text-gray-500">Customer: John Doe • 15 mins ago</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900">₱250.00</p>
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Active
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm text-gray-600">Total Orders</span>
+                    <span className="font-semibold text-gray-900">{statistics.total_orders}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm text-gray-600">Pending Orders</span>
+                    <span className="font-semibold text-orange-600">{statistics.pending_orders}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm text-gray-600">Active Products</span>
+                    <span className="font-semibold text-green-600">{statistics.active_products}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm text-gray-600">Total Revenue</span>
+                    <span className="font-semibold text-gray-900">{formatCurrency(statistics.total_revenue)}</span>
+                  </div>
                 </div>
               </Card>
             </div>
           </div>
-        </main>
+        </div>
       </div>
-    </div>
     </MerchantAuthGuard>
   );
 };

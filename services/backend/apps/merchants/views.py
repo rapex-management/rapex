@@ -2,6 +2,7 @@ from rest_framework import generics, status, filters
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Count
 from django.utils import timezone
 from django.core.paginator import Paginator
@@ -16,6 +17,12 @@ from .serializers import (
 from apps.webauth.permissions import IsAdminUser
 
 
+class MerchantPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 class MerchantListView(generics.ListAPIView):
     serializer_class = MerchantListSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
@@ -23,6 +30,7 @@ class MerchantListView(generics.ListAPIView):
     search_fields = ['merchant_name', 'owner_name', 'email', 'username', 'phone']
     ordering_fields = ['date_joined', 'merchant_name', 'status']
     ordering = ['-date_joined']
+    pagination_class = MerchantPagination
     
     def get_queryset(self):
         queryset = Merchant.objects.select_related('business_category', 'business_type').prefetch_related('merchant_documents')
@@ -115,9 +123,9 @@ class MerchantUpdateView(generics.UpdateAPIView):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsAdminUser])
-def update_merchant_status(request, merchant_id):
+def update_merchant_status(request, id):
     try:
-        merchant = Merchant.objects.get(id=merchant_id)
+        merchant = Merchant.objects.get(id=id)
     except Merchant.DoesNotExist:
         return Response({'error': 'Merchant not found'}, status=status.HTTP_404_NOT_FOUND)
     
@@ -171,30 +179,36 @@ def update_merchant_status(request, merchant_id):
 @permission_classes([IsAuthenticated, IsAdminUser])
 def batch_merchant_action(request):
     serializer = MerchantBatchActionSerializer(data=request.data)
-    if serializer.is_valid():
-        merchant_ids = serializer.validated_data['merchant_ids']
-        action = serializer.validated_data['action']
-        reason = serializer.validated_data.get('reason', '')
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        admin = request.user
-        
-        # Map actions to status codes
-        action_status_map = {
-            'approve': 0,
-            'reject': 6,
-            'ban': 1,
-            'freeze': 2,
-            'delete': 3,
-            'activate': 0
-        }
-        
-        new_status = action_status_map.get(action)
-        if new_status is None:
-            return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
-        
+    merchant_ids = serializer.validated_data['merchant_ids']
+    action = serializer.validated_data['action']
+    reason = serializer.validated_data.get('reason', '')
+    
+    admin = request.user
+    
+    # Map actions to status codes
+    action_status_map = {
+        'approve': 0,
+        'reject': 6,
+        'ban': 1,
+        'freeze': 2,
+        'delete': 3,
+        'activate': 0
+    }
+    
+    new_status = action_status_map.get(action)
+    if new_status is None:
+        return Response({'error': 'Invalid action'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
         with transaction.atomic():
             merchants = Merchant.objects.filter(id__in=merchant_ids)
             updated_count = 0
+            
+            if not merchants.exists():
+                return Response({'error': 'No valid merchants found'}, status=status.HTTP_404_NOT_FOUND)
             
             for merchant in merchants:
                 merchant.status = new_status
@@ -233,8 +247,8 @@ def batch_merchant_action(request):
             'message': f'Successfully {action}ed {updated_count} merchants',
             'updated_count': updated_count
         })
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': f'Batch action failed: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class MerchantCreateView(generics.CreateAPIView):
@@ -250,7 +264,9 @@ class MerchantCreateView(generics.CreateAPIView):
         
         merchant = serializer.save(
             merchant_id=merchant_id,
-            status=0  # Active by default when created by admin
+            status=0,  # Active by default when created by admin
+            verified_at=timezone.now(),  # Mark as verified since created by admin
+            verified_by=self.request.user.id  # Set the admin who created it
         )
         
         # Log creation in additional_info
@@ -271,9 +287,9 @@ class MerchantCreateView(generics.CreateAPIView):
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated, IsAdminUser])
-def delete_merchant(request, merchant_id):
+def delete_merchant(request, id):
     try:
-        merchant = Merchant.objects.get(id=merchant_id)
+        merchant = Merchant.objects.get(id=id)
     except Merchant.DoesNotExist:
         return Response({'error': 'Merchant not found'}, status=status.HTTP_404_NOT_FOUND)
     

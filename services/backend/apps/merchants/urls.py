@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .dashboard_views import merchant_dashboard
 
 app_name = 'merchants'
 
@@ -7,6 +8,9 @@ urlpatterns = [
     # List and create merchants
     path('', views.MerchantListView.as_view(), name='merchant-list'),
     path('create/', views.MerchantCreateView.as_view(), name='merchant-create'),
+    
+    # Merchant dashboard (for authenticated merchants)
+    path('dashboard/', merchant_dashboard, name='merchant-dashboard'),
     
     # Individual merchant operations
     path('<uuid:id>/', views.MerchantDetailView.as_view(), name='merchant-detail'),

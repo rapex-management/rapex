@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ detail: 'No authorization token provided' });
     }
 
-    const response = await fetch(`${backendUrl}/api/merchant/verify-token/`, {
+    const response = await fetch(`${backendUrl}/api/auth/merchant/verify-token/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
