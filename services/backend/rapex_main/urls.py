@@ -16,4 +16,5 @@ except Exception:
 urlpatterns = [
     path('api/', include(router.urls)),
     path('api/', include('apps.webauth.urls')),
+    path('api/merchants/', include('apps.merchants.urls')),
 ]

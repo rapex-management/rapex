@@ -67,7 +67,23 @@ const MerchantLogin = () => {
           router.push('/merchant/dashboard');
         }, 1500);
       } else {
-        showNotification('error', 'Login Failed', data.detail || 'Invalid credentials. Please try again.');
+        // Handle specific status codes
+        if (data.status_code === 'PENDING_APPROVAL') {
+          showNotification('info', 'Account Under Review', data.message || 'Your account is pending approval.');
+          setTimeout(() => {
+            router.push('/merchant/pending-approval');
+          }, 2000);
+        } else if (data.status_code === 'ACCOUNT_BANNED') {
+          showNotification('error', 'Account Suspended', data.message || 'Your account has been suspended.');
+        } else if (data.status_code === 'ACCOUNT_FROZEN') {
+          showNotification('warning', 'Account Frozen', data.message || 'Your account is temporarily frozen.');
+        } else if (data.status_code === 'ACCOUNT_DELETED') {
+          showNotification('error', 'Account Not Found', data.message || 'This account is no longer active.');
+        } else if (data.status_code === 'ACCOUNT_INACTIVE') {
+          showNotification('warning', 'Account Inactive', data.message || 'Your account is not currently accessible.');
+        } else {
+          showNotification('error', 'Login Failed', data.detail || 'Invalid credentials. Please try again.');
+        }
       }
     } catch {
       showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');

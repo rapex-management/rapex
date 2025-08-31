@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { useRouter } from 'next/router';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import Notification from '../../components/ui/Notification';
 import LocationPicker from '../../components/ui/LocationPicker';
+import FileUpload from '../../components/ui/FileUpload';
 
 interface FormData {
   // Step 1: General Info
@@ -16,7 +17,8 @@ interface FormData {
   password: string;
   confirmPassword: string;
   phone: string;
-  mccCategory: string;
+  businessCategory: string;
+  businessType: string;
   businessRegistration: string;
   
   // Step 2: Location
@@ -37,9 +39,14 @@ const MerchantSignup = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-  const [merchantId, setMerchantId] = useState('');
+  const [sessionId, setSessionId] = useState(''); // Changed from merchantId to sessionId
   const [isCompleted, setIsCompleted] = useState(false);
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [businessCategories, setBusinessCategories] = useState<Array<{id: number, mcc: string}>>([]);
+  const [businessTypes, setBusinessTypes] = useState<Array<{id: number, business_type: string, business_category: number}>>([]);
+  const [isLoadingBusinessCategories, setIsLoadingBusinessCategories] = useState(false);
+  const [isLoadingBusinessTypes, setIsLoadingBusinessTypes] = useState(false);
+  const [isSavingStep, setIsSavingStep] = useState(false);
   const [notification, setNotification] = useState<{
     isVisible: boolean;
     type: 'success' | 'error' | 'warning' | 'info';
@@ -60,7 +67,8 @@ const MerchantSignup = () => {
     password: '',
     confirmPassword: '',
     phone: '+63',
-    mccCategory: '0',
+    businessCategory: '',
+    businessType: '',
     businessRegistration: '2',
     zipcode: '',
     province: '',
@@ -68,12 +76,11 @@ const MerchantSignup = () => {
     barangay: '',
     street_name: '',
     house_number: '',
-    latitude: null,
-    longitude: null,
+    latitude: 14.4167, // Kawit, Cavite coordinates
+    longitude: 120.9047,
     documents: {}
   });
 
-  const router = useRouter();
   const steps = ['General Info', 'Location', 'Documents', 'Verification'];
 
   const showNotification = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
@@ -88,6 +95,64 @@ const MerchantSignup = () => {
   const hideNotification = () => {
     setNotification(prev => ({ ...prev, isVisible: false }));
   };
+
+  // Data fetching functions
+  const fetchBusinessCategories = useCallback(async () => {
+    setIsLoadingBusinessCategories(true);
+    try {
+      const response = await fetch('/api/proxy/data/business-category');
+      const data = await response.json();
+      if (data.success) {
+        setBusinessCategories(data.data);
+      } else {
+        showNotification('error', 'Data Error', 'Failed to load business categories.');
+      }
+    } catch {
+      showNotification('error', 'Connection Error', 'Unable to load business categories.');
+    } finally {
+      setIsLoadingBusinessCategories(false);
+    }
+  }, []);
+
+  const fetchBusinessTypes = useCallback(async (businessCategoryId?: string) => {
+    setIsLoadingBusinessTypes(true);
+    try {
+      const url = businessCategoryId ? `/api/proxy/data/business-types?business_category_id=${businessCategoryId}` : '/api/proxy/data/business-types';
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.success) {
+        setBusinessTypes(data.data);
+      } else {
+        showNotification('error', 'Data Error', 'Failed to load business types.');
+      }
+    } catch {
+      showNotification('error', 'Connection Error', 'Unable to load business types.');
+    } finally {
+      setIsLoadingBusinessTypes(false);
+    }
+  }, []);
+
+  // Load initial data
+  useEffect(() => {
+    fetchBusinessCategories();
+    fetchBusinessTypes();
+  }, [fetchBusinessCategories, fetchBusinessTypes]);
+
+  // Handle business category change
+  const handleBusinessCategoryChange = useCallback((value: string) => {
+    setFormData(prev => ({
+      ...prev, 
+      businessCategory: value,
+      businessType: '' // Reset business type when category changes
+    }));
+    
+    // Fetch business types for the selected category
+    if (value) {
+      fetchBusinessTypes(value);
+    } else {
+      fetchBusinessTypes();
+    }
+  }, [fetchBusinessTypes]);
 
   // Validation helper functions
   const checkUsernameUnique = async (username: string): Promise<boolean> => {
@@ -147,6 +212,57 @@ const MerchantSignup = () => {
     return { isValid: true, message: '' };
   };
 
+  const getPasswordRequirements = (password: string) => {
+    return [
+      {
+        text: 'At least 8 characters',
+        met: password.length >= 8
+      },
+      {
+        text: 'One uppercase letter (A-Z)',
+        met: /[A-Z]/.test(password)
+      },
+      {
+        text: 'One lowercase letter (a-z)',
+        met: /[a-z]/.test(password)
+      },
+      {
+        text: 'One number (0-9)',
+        met: /\d/.test(password)
+      },
+      {
+        text: 'One special character (!@#$%^&*)',
+        met: /[!@#$%^&*(),.?":{}|<>]/.test(password)
+      }
+    ];
+  };
+
+  const PasswordRequirements = ({ password }: { password: string }) => {
+    const requirements = getPasswordRequirements(password);
+    
+    return (
+      <div className="mt-2 space-y-1">
+        <p className="text-sm font-medium text-gray-700 mb-2">Password requirements:</p>
+        {requirements.map((req, index) => (
+          <div key={index} className="flex items-center space-x-2">
+            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+              req.met ? 'bg-green-500' : 'bg-gray-300'
+            }`}>
+              {req.met && (
+                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <span className={`text-sm ${req.met ? 'text-green-600' : 'text-gray-500'}`}>
+              {req.text}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const formatPhoneNumber = (value: string): string => {
     // Remove all non-digit characters
     const digitsOnly = value.replace(/\D/g, '');
@@ -160,25 +276,6 @@ const MerchantSignup = () => {
     // Always return with +63 prefix
     return limitedDigits ? `+63${limitedDigits}` : '+63';
   };
-
-  const mccCategories = [
-    { value: '0', label: 'General Retail' },
-    { value: '1', label: 'Food & Beverage' },
-    { value: '2', label: 'Grocery & Supermarket' },
-    { value: '3', label: 'Gas Station' },
-    { value: '4', label: 'Clothing & Accessories' },
-    { value: '5', label: 'Electronics' },
-    { value: '6', label: 'Books & Media' },
-    { value: '7', label: 'Health & Beauty' },
-    { value: '8', label: 'Home & Garden' },
-    { value: '9', label: 'Sports & Recreation' },
-    { value: '10', label: 'Automotive' },
-    { value: '11', label: 'Services - Professional' },
-    { value: '12', label: 'Services - Personal' },
-    { value: '13', label: 'Hotel & Lodging' },
-    { value: '14', label: 'Transportation' },
-    { value: '15', label: 'Entertainment' }
-  ];
 
   const businessRegistrationOptions = [
     { value: '0', label: 'Registered (VAT Included)' },
@@ -216,7 +313,7 @@ const MerchantSignup = () => {
       case 0: // General Info
         if (!formData.merchantName || !formData.ownerName || !formData.username || 
             !formData.email || !formData.password || !formData.confirmPassword || 
-            !formData.phone) {
+            !formData.phone || !formData.businessCategory || !formData.businessType) {
           showNotification('error', 'Validation Error', 'Please fill in all required fields.');
           return false;
         }
@@ -262,8 +359,9 @@ const MerchantSignup = () => {
           showNotification('error', 'Validation Error', 'Please fill in all address fields.');
           return false;
         }
-        if (!formData.latitude || !formData.longitude) {
-          showNotification('error', 'Validation Error', 'Please select your location on the map.');
+        if (!formData.latitude || !formData.longitude || 
+            formData.latitude === 0 || formData.longitude === 0) {
+          showNotification('error', 'Location Required', 'Please select your exact location on the map.');
           return false;
         }
         return true;
@@ -286,15 +384,189 @@ const MerchantSignup = () => {
   const handleNext = async () => {
     setIsLoading(true);
     const isValid = await validateCurrentStep();
-    setIsLoading(false);
     
     if (isValid) {
+      await saveCurrentStepData();
+    }
+    
+    setIsLoading(false);
+  };
+
+  const saveCurrentStepData = async () => {
+    setIsSavingStep(true);
+    
+    try {
+      let stepData: Record<string, unknown> = {};
+      const step = currentStep + 1; // API expects 1-based step numbers
+      
+      // Prepare data based on current step
       if (currentStep === 0) {
-        // Submit general info and get merchant ID
-        handleGeneralInfoSubmit();
-      } else {
-        setCurrentStep(prev => Math.min(prev + 1, steps.length - 1));
+        // Step 1: General Info
+        stepData = {
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          confirm_password: formData.confirmPassword,
+          merchant_name: formData.merchantName,
+          owner_name: formData.ownerName,
+          phone: formData.phone,
+          business_category: parseInt(formData.businessCategory),
+          business_type: parseInt(formData.businessType),
+          business_registration: parseInt(formData.businessRegistration)
+        };
+      } else if (currentStep === 1) {
+        // Step 2: Location
+        stepData = {
+          zipcode: formData.zipcode,
+          province: formData.province,
+          city_municipality: formData.city_municipality,
+          barangay: formData.barangay,
+          street_name: formData.street_name,
+          house_number: formData.house_number,
+          latitude: formData.latitude ? parseFloat(formData.latitude.toString()) : null,
+          longitude: formData.longitude ? parseFloat(formData.longitude.toString()) : null
+        };
+        
+        console.log('Location step data being sent:', stepData);
+        
+      } else if (currentStep === 2) {
+        // Step 3: Documents - Handle file uploads differently
+        await handleDocumentUpload();
+        return; // Exit early as document upload handles the flow
       }
+
+      const response = await fetch('/api/proxy/merchant/registration/step', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          step: step,
+          session_id: sessionId || undefined,
+          data: stepData
+        }),
+      });
+
+      console.log('Registration step response:', response.status, response.statusText);
+
+      const responseData = await response.json();
+      console.log('Registration step data:', responseData);
+
+      if (response.ok) {
+        // Update session ID if this is the first step
+        if (!sessionId && responseData.session_id) {
+          setSessionId(responseData.session_id);
+        }
+        
+        // Show success message
+        if (step === 3) {
+          showNotification('success', 'Documents Saved', 'OTP sent to your email for verification.');
+          setCurrentStep(3); // Move to verification step
+        } else {
+          showNotification('success', 'Step Saved', `Step ${step} saved successfully.`);
+          setCurrentStep(prev => Math.min(prev + 1, steps.length - 1));
+        }
+      } else {
+        // Enhanced error handling
+        let errorMessage = responseData.detail || 'Failed to save step data.';
+        
+        // Handle validation errors
+        if (responseData.errors || responseData.error) {
+          const errors = responseData.errors || responseData.error;
+          if (typeof errors === 'object') {
+            const errorMessages = Object.entries(errors).map(([field, messages]) => {
+              if (Array.isArray(messages)) {
+                return `${field}: ${messages.join(', ')}`;
+              }
+              return `${field}: ${messages}`;
+            });
+            errorMessage = errorMessages.join('\n');
+          } else {
+            errorMessage = errors.toString();
+          }
+        }
+        
+        console.error('Step validation errors:', responseData);
+        showNotification('error', 'Validation Error', errorMessage);
+      }
+    } catch (error) {
+      console.error('Step save error:', error);
+      showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');
+    } finally {
+      setIsSavingStep(false);
+    }
+  };
+
+  const handleDocumentUpload = async () => {
+    if (!sessionId) {
+      showNotification('error', 'Session Error', 'Registration session not found. Please start over.');
+      return;
+    }
+
+    console.log('Starting document upload with session ID:', sessionId);
+    console.log('Documents to upload:', Object.keys(formData.documents));
+
+    try {
+      const formDataObj = new FormData();
+      formDataObj.append('session_id', sessionId);
+      
+      // Add uploaded files
+      let fileCount = 0;
+      Object.entries(formData.documents).forEach(([key, file]) => {
+        if (file) {
+          console.log(`Adding file: ${key}, size: ${file.size}, type: ${file.type}`);
+          formDataObj.append(key, file);
+          fileCount++;
+        }
+      });
+
+      if (fileCount === 0) {
+        showNotification('error', 'No Files', 'Please upload at least one document before proceeding.');
+        return;
+      }
+
+      console.log(`Uploading ${fileCount} files...`);
+
+      const response = await fetch('/api/proxy/merchant/registration/documents', {
+        method: 'POST',
+        body: formDataObj,
+      });
+
+      console.log('Document upload response status:', response.status);
+
+      const responseData = await response.json();
+      console.log('Document upload response data:', responseData);
+
+      if (response.ok) {
+        showNotification('success', 'Documents Uploaded', 'Documents uploaded successfully. OTP sent to your email.');
+        setCurrentStep(3); // Move to verification step
+      } else {
+        // Enhanced error handling based on error type
+        let errorMessage = responseData.detail || 'Failed to upload documents.';
+        
+        if (responseData.error === 'FILE_TOO_LARGE') {
+          errorMessage = 'One or more files exceed the 2MB size limit.';
+        } else if (responseData.error === 'INVALID_FILE_TYPE') {
+          errorMessage = 'Invalid file type. Only PDF, JPG, JPEG, and PNG files are allowed.';
+        } else if (responseData.errors) {
+          // Handle validation errors from backend
+          const errors = responseData.errors;
+          if (typeof errors === 'object') {
+            const errorMessages = Object.entries(errors).map(([field, messages]) => {
+              if (Array.isArray(messages)) {
+                return `${field}: ${messages.join(', ')}`;
+              }
+              return `${field}: ${messages}`;
+            });
+            errorMessage = errorMessages.join('\n');
+          }
+        }
+        
+        showNotification('error', 'Upload Failed', errorMessage);
+      }
+    } catch (error) {
+      console.error('Document upload error:', error);
+      showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');
     }
   };
 
@@ -307,130 +579,17 @@ const MerchantSignup = () => {
       case 0: // General Info
         return formData.merchantName && formData.ownerName && formData.username && 
                formData.email && formData.password && formData.confirmPassword && 
-               formData.phone && formData.phone.length >= 13; // +63 + 10 digits
+               formData.phone && formData.phone.length >= 13 && formData.businessCategory && formData.businessType; // +63 + 10 digits
       case 1: // Location
         return formData.zipcode && formData.province && formData.city_municipality && 
                formData.barangay && formData.street_name && formData.house_number &&
-               formData.latitude && formData.longitude;
+               formData.latitude && formData.longitude && 
+               formData.latitude !== 0 && formData.longitude !== 0;
       case 2: // Documents
         const requiredDocs = getRequiredDocuments().filter(doc => doc.required);
         return requiredDocs.every(doc => formData.documents[doc.key]);
       default:
         return true;
-    }
-  };
-
-  const handleGeneralInfoSubmit = async () => {
-    setIsLoading(true);
-
-    try {
-      const response = await fetch('/api/proxy/merchant/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          merchant_name: formData.merchantName,
-          owner_name: formData.ownerName,
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-          phone: formData.phone,
-          mcc: parseInt(formData.mccCategory),
-          business_registration: parseInt(formData.businessRegistration)
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setMerchantId(data.merchant_id);
-        showNotification('success', 'Account Created', 'Please complete the remaining steps.');
-        setCurrentStep(1);
-      } else {
-        showNotification('error', 'Signup Failed', data.detail || 'Failed to create account. Please try again.');
-      }
-    } catch {
-      showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLocationSubmit = async () => {
-    if (!merchantId) {
-      showNotification('error', 'Error', 'Please complete the previous step first.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const response = await fetch(`/api/proxy/merchant/${merchantId}/location`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          zipcode: formData.zipcode,
-          province: formData.province,
-          city_municipality: formData.city_municipality,
-          barangay: formData.barangay,
-          street_name: formData.street_name,
-          house_number: formData.house_number,
-          latitude: formData.latitude,
-          longitude: formData.longitude
-        }),
-      });
-
-      if (response.ok) {
-        showNotification('success', 'Location Updated', 'Location information saved successfully.');
-        setCurrentStep(2);
-      } else {
-        showNotification('error', 'Update Failed', 'Failed to update location. Please try again.');
-      }
-    } catch {
-      showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDocumentUpload = async () => {
-    if (!merchantId) {
-      showNotification('error', 'Error', 'Please complete the previous steps first.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const formDataObj = new FormData();
-      
-      // Add uploaded files
-      Object.entries(formData.documents).forEach(([key, file]) => {
-        if (file) {
-          formDataObj.append(key, file);
-        }
-      });
-
-      const response = await fetch(`/api/proxy/merchant/${merchantId}/documents`, {
-        method: 'POST',
-        body: formDataObj,
-      });
-
-      if (response.ok) {
-        showNotification('success', 'Documents Uploaded', 'Documents uploaded successfully.');
-        setCurrentStep(3);
-        // Send OTP for verification
-        await sendOTP();
-      } else {
-        showNotification('error', 'Upload Failed', 'Failed to upload documents. Please try again.');
-      }
-    } catch {
-      showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -463,26 +622,37 @@ const MerchantSignup = () => {
       return;
     }
 
+    if (!sessionId) {
+      showNotification('error', 'Session Error', 'Registration session not found. Please start over.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/proxy/verify-otp', {
+      const response = await fetch('/api/proxy/merchant/registration/complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: formData.email,
-          otp_code: otpCode,
-          purpose: 'merchant_signup'
+          session_id: sessionId,
+          otp_code: otpCode
         }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
         setIsCompleted(true);
-        showNotification('success', 'Verification Complete', 'Your account has been created successfully!');
+        showNotification('success', 'Registration Complete', 'Your merchant account has been created successfully!');
+        
+        // Optional: Redirect to login or dashboard
+        setTimeout(() => {
+          window.location.href = '/merchant/login';
+        }, 3000);
       } else {
-        showNotification('error', 'Verification Failed', 'Invalid or expired OTP code. Please try again.');
+        showNotification('error', 'Verification Failed', data.detail || 'Invalid or expired OTP code. Please try again.');
       }
     } catch {
       showNotification('error', 'Connection Error', 'Unable to verify OTP. Please try again.');
@@ -501,7 +671,18 @@ const MerchantSignup = () => {
       latitude: lat,
       longitude: lng
     }));
-    showNotification('success', 'Location Selected', `Location set to ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+    
+    // Enhanced notification with location context
+    let locationName = 'Location';
+    if (lat >= 14.40 && lat <= 14.43 && lng >= 120.90 && lng <= 120.92) {
+      locationName = 'Kawit, Cavite area';
+    } else if (lat >= 14.50 && lat <= 14.70 && lng >= 120.90 && lng <= 121.10) {
+      locationName = 'Metro Manila area';
+    } else if (lat >= 14.30 && lat <= 14.50 && lng >= 120.80 && lng <= 121.00) {
+      locationName = 'Cavite Province area';
+    }
+    
+    showNotification('success', 'Location Selected', `${locationName} coordinates set: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
   };
 
   if (isCompleted) {
@@ -639,21 +820,24 @@ const MerchantSignup = () => {
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData(prev => ({...prev, password: e.target.value}))}
-                placeholder="Create password"
-                required
-                leftIcon={
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                }
-                variant="outlined"
-                size="md"
-              />
+              <div>
+                <Input
+                  label="Password"
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData(prev => ({...prev, password: e.target.value}))}
+                  placeholder="Create password"
+                  required
+                  leftIcon={
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  }
+                  variant="outlined"
+                  size="md"
+                />
+                {formData.password && <PasswordRequirements password={formData.password} />}
+              </div>
               
               <Input
                 label="Confirm Password"
@@ -672,20 +856,41 @@ const MerchantSignup = () => {
               />
             </div>
 
-            <Dropdown
-              label="Business Type"
-              options={mccCategories}
-              value={formData.mccCategory}
-              onChange={(value) => setFormData(prev => ({...prev, mccCategory: value}))}
-              required
-              leftIcon={
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              }
-              variant="outlined"
-              size="md"
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Dropdown
+                label="Business Category"
+                options={businessCategories.map(category => ({ value: category.id.toString(), label: category.mcc }))}
+                value={formData.businessCategory}
+                onChange={handleBusinessCategoryChange}
+                required
+                disabled={isLoadingBusinessCategories}
+                placeholder={isLoadingBusinessCategories ? "Loading categories..." : "Select business category"}
+                leftIcon={
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                }
+                variant="outlined"
+                size="md"
+              />
+              
+              <Dropdown
+                label="Business Type"
+                options={businessTypes.map(type => ({ value: type.id.toString(), label: type.business_type }))}
+                value={formData.businessType}
+                onChange={(value) => setFormData(prev => ({...prev, businessType: value}))}
+                required
+                disabled={!formData.businessCategory || isLoadingBusinessTypes}
+                placeholder={!formData.businessCategory ? "Select category first" : isLoadingBusinessTypes ? "Loading types..." : "Select business type"}
+                leftIcon={
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6.14M16 6H8m0 0v-.5a.5.5 0 01.5-.5h7a.5.5 0 01.5.5V6M8 6v10a2 2 0 002 2h4a2 2 0 002-2V6" />
+                  </svg>
+                }
+                variant="outlined"
+                size="md"
+              />
+            </div>
 
             <Dropdown
               label="Business Registration"
@@ -713,7 +918,7 @@ const MerchantSignup = () => {
                 type="text"
                 value={formData.zipcode}
                 onChange={(e) => setFormData(prev => ({...prev, zipcode: e.target.value}))}
-                placeholder="Enter ZIP code"
+                placeholder="e.g., 4104 (Kawit, Cavite)"
                 required
                 leftIcon={
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -729,7 +934,7 @@ const MerchantSignup = () => {
                 type="text"
                 value={formData.province}
                 onChange={(e) => setFormData(prev => ({...prev, province: e.target.value}))}
-                placeholder="Enter province"
+                placeholder="e.g., Cavite"
                 required
                 leftIcon={
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -748,7 +953,7 @@ const MerchantSignup = () => {
                 type="text"
                 value={formData.city_municipality}
                 onChange={(e) => setFormData(prev => ({...prev, city_municipality: e.target.value}))}
-                placeholder="Enter city/municipality"
+                placeholder="e.g., Kawit"
                 required
                 leftIcon={
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -764,7 +969,7 @@ const MerchantSignup = () => {
                 type="text"
                 value={formData.barangay}
                 onChange={(e) => setFormData(prev => ({...prev, barangay: e.target.value}))}
-                placeholder="Enter barangay"
+                placeholder="e.g., Poblacion"
                 required
                 leftIcon={
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -783,7 +988,7 @@ const MerchantSignup = () => {
                 type="text"
                 value={formData.street_name}
                 onChange={(e) => setFormData(prev => ({...prev, street_name: e.target.value}))}
-                placeholder="Enter street name"
+                placeholder="e.g., Aguinaldo Highway"
                 required
                 leftIcon={
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -799,7 +1004,7 @@ const MerchantSignup = () => {
                 type="text"
                 value={formData.house_number}
                 onChange={(e) => setFormData(prev => ({...prev, house_number: e.target.value}))}
-                placeholder="Enter house number"
+                placeholder="e.g., 123 or Block 5 Lot 10"
                 required
                 leftIcon={
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -817,17 +1022,17 @@ const MerchantSignup = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Pin Your Location</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Business Location</h3>
                 <p className="text-gray-600 mb-4">
-                  Click the button below to select your exact business location on the map.
+                  Default location is set to Kawit, Cavite, Philippines. Click below to adjust if needed.
                 </p>
                 {formData.latitude && formData.longitude ? (
                   <div className="mb-4">
                     <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                      ✓ Location Selected
+                      ✓ Location Set: Kawit, Cavite
                     </span>
                     <p className="text-sm text-gray-500 mt-1">
-                      {formData.latitude}, {formData.longitude}
+                      {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
                     </p>
                   </div>
                 ) : null}
@@ -842,7 +1047,7 @@ const MerchantSignup = () => {
                     </svg>
                   }
                 >
-                  {formData.latitude && formData.longitude ? 'Change Location' : 'Pick Location'}
+                  {formData.latitude && formData.longitude ? 'Adjust Location' : 'Set Location'}
                 </Button>
               </div>
             </div>
@@ -867,32 +1072,35 @@ const MerchantSignup = () => {
         }
 
         return (
-          <div className="space-y-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="text-lg font-medium text-blue-900 mb-2">Document Requirements</h3>
-              <p className="text-blue-700 text-sm">
-                Based on your business registration type (<strong>{businessRegistrationOptions.find(opt => opt.value === formData.businessRegistration)?.label}</strong>), 
-                please upload the following documents:
-              </p>
+          <div className="space-y-8">
+            {/* Header Section */}
+            <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-6">
+              <div className="flex items-start space-x-4">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-orange-900 mb-2">Document Requirements</h3>
+                  <p className="text-orange-700 text-sm leading-relaxed">
+                    Based on your business registration type (<strong>{businessRegistrationOptions.find(opt => opt.value === formData.businessRegistration)?.label}</strong>), 
+                    please upload the following documents. All files must be clear, readable, and under 2MB in size.
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {requiredDocs.map((doc) => (
-              <div key={doc.key} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    {doc.label} {doc.required && <span className="text-red-500">*</span>}
-                  </label>
-                  {formData.documents[doc.key] && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      ✓ Uploaded
-                    </span>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
+            {/* Document Upload Forms */}
+            <div className="space-y-6">
+              {requiredDocs.map((doc) => (
+                <FileUpload
+                  key={doc.key}
+                  label={doc.label}
+                  value={formData.documents[doc.key]}
+                  onChange={(file) => {
                     setFormData(prev => ({
                       ...prev,
                       documents: {
@@ -901,24 +1109,83 @@ const MerchantSignup = () => {
                       }
                     }));
                   }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-200 bg-gray-50"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  maxSize={2}
+                  required={doc.required}
+                  optional={!doc.required}
+                  helperText={doc.required ? "This document is required for your business type" : "This document is optional but may help speed up verification"}
                 />
-                {formData.documents[doc.key] && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    Selected: {formData.documents[doc.key]?.name}
-                  </p>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
 
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Upload Guidelines:</h4>
-              <ul className="text-sm text-gray-600 space-y-1">
-                <li>• Accepted formats: PDF, JPG, JPEG, PNG</li>
-                <li>• Maximum file size: 10MB per document</li>
-                <li>• Ensure documents are clear and readable</li>
-                <li>• All required documents must be uploaded to proceed</li>
-              </ul>
+            {/* Guidelines Section */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+              <div className="flex items-start space-x-4">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Upload Guidelines</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-700 mb-2">Accepted Formats</h5>
+                      <div className="flex flex-wrap gap-2">
+                        {['.PDF', '.JPG', '.JPEG', '.PNG'].map((format) => (
+                          <span key={format} className="px-2 py-1 bg-white border border-gray-200 rounded text-xs font-mono">
+                            {format}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-700 mb-2">Requirements</h5>
+                      <ul className="text-xs text-gray-600 space-y-1">
+                        <li>• Maximum 2MB per file</li>
+                        <li>• Clear and readable quality</li>
+                        <li>• Complete document visible</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Progress Summary */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Upload Progress</p>
+                    <p className="text-xs text-gray-500">
+                      {Object.values(formData.documents).filter(Boolean).length} of {requiredDocs.length} documents uploaded
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  {requiredDocs.map((doc) => (
+                    <div
+                      key={doc.key}
+                      className={`w-3 h-3 rounded-full transition-colors duration-200 ${
+                        formData.documents[doc.key] 
+                          ? 'bg-green-500' 
+                          : doc.required 
+                            ? 'bg-red-200' 
+                            : 'bg-gray-200'
+                      }`}
+                      title={`${doc.label} - ${formData.documents[doc.key] ? 'Uploaded' : doc.required ? 'Required' : 'Optional'}`}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -1013,7 +1280,7 @@ const MerchantSignup = () => {
                   <div className="text-center space-y-3">
                     <div className="flex items-center justify-center mb-4">
                       <div className="w-14 h-14 rounded-xl overflow-hidden p-0 shadow-xl flex items-center justify-center">
-                        <img src="/assets/rapexlogosquare.png" alt="Rapex logo" className="w-full h-full object-cover" />
+                        <Image src="/assets/rapexlogosquare.png" alt="Rapex logo" width={200} height={200} className="w-full h-full object-cover" />
                       </div>
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900">Create Merchant Account</h2>
@@ -1084,11 +1351,11 @@ const MerchantSignup = () => {
                     ) : (
                       <Button
                         type="button"
-                        onClick={currentStep === 2 ? handleDocumentUpload : (currentStep === 1 ? handleLocationSubmit : handleOtpVerification)}
-                        isLoading={isLoading}
+                        onClick={currentStep === 3 ? handleOtpVerification : handleNext}
+                        isLoading={isLoading || isSavingStep}
                         disabled={currentStep === 3 ? otpCode.length !== 6 : false}
                       >
-                        {currentStep === 2 ? 'Upload Documents' : (currentStep === 1 ? 'Save Location' : 'Verify Account')}
+                        {currentStep === 3 ? 'Verify Account' : 'Next'}
                       </Button>
                     )}
                   </div>

@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { Sidebar } from '../../components/ui/Sidebar';
 import { Card } from '../../components/ui/Card';
+import MerchantAuthGuard from '../../components/auth/MerchantAuthGuard';
 
 const MerchantDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('merchant_token');
     const merchantData = localStorage.getItem('merchant');
     
     if (!token || !merchantData) {
@@ -21,7 +22,7 @@ const MerchantDashboard = () => {
 
   const handleLogout = async () => {
     try {
-      const refresh = localStorage.getItem('refresh');
+      const refresh = localStorage.getItem('merchant_refresh_token');
       if (refresh) {
         await fetch('/api/proxy/logout', {
           method: 'POST',
@@ -32,8 +33,8 @@ const MerchantDashboard = () => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh');
+      localStorage.removeItem('merchant_token');
+      localStorage.removeItem('merchant_refresh_token');
       localStorage.removeItem('merchant');
       router.push('/merchant/login');
     }
@@ -219,7 +220,8 @@ const MerchantDashboard = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <MerchantAuthGuard requireActive={true}>
+      <div className="flex h-screen bg-gray-50">
       <Sidebar
         items={sidebarItems}
         userInfo={{
@@ -374,6 +376,7 @@ const MerchantDashboard = () => {
         </main>
       </div>
     </div>
+    </MerchantAuthGuard>
   );
 };
 

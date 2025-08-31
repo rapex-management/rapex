@@ -52,6 +52,10 @@ services:
     environment:
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
+      - BACKEND_URL=http://backend:8000
+      - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-YOUR_GOOGLE_MAPS_API_KEY}
+    depends_on:
+      - backend
 
 volumes:
   db_data:
