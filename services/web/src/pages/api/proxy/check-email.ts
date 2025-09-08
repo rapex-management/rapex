@@ -1,8 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -18,15 +19,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const data = await response.json();
 
     if (response.ok) {
-      return res.status(200).json(data);
+      res.status(200).json(data); return;
     } else {
-      return res.status(response.status).json(data);
+      res.status(response.status).json(data); return;
     }
   } catch (error) {
     console.error('Email check error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       available: false,
       detail: 'Error checking email availability.'
     });
+    return;
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import Notification from '../../components/ui/Notification';
@@ -423,7 +424,14 @@ const AdminForgotPassword = () => {
                   <div className="mb-6">
                     <div className="w-24 h-24 bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 shadow-xl flex items-center justify-center">
                       <div className="w-16 h-16 rounded-xl overflow-hidden shadow-lg">
-                        <img src="/assets/rapexlogosquare.png" alt="Rapex logo" className="w-full h-full object-cover" />
+                        <Image 
+                          src="/assets/rapexlogosquare.png" 
+                          alt="Rapex logo" 
+                          width={64} 
+                          height={64} 
+                          className="w-full h-full object-cover"
+                          priority
+                        />
                       </div>
                     </div>
                   </div>
@@ -475,7 +483,14 @@ const AdminForgotPassword = () => {
                   <div className="text-center space-y-3">
                     <div className="flex items-center justify-center lg:hidden mb-4">
                       <div className="w-14 h-14 rounded-xl overflow-hidden p-0 shadow-xl flex items-center justify-center">
-                        <img src="/assets/rapexlogosquare.png" alt="Rapex logo" className="w-full h-full object-cover" />
+                        <Image 
+                          src="/assets/rapexlogosquare.png" 
+                          alt="Rapex logo" 
+                          width={56} 
+                          height={56} 
+                          className="w-full h-full object-cover"
+                          priority
+                        />
                       </div>
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900">Reset Password</h2>

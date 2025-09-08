@@ -9,7 +9,8 @@ from django.core.paginator import Paginator
 from django.db import transaction
 import uuid
 
-from apps.webauth.models import Merchant, Admin, MerchantDocument
+from .models import Merchant, MerchantDocument
+from apps.webauth.models import Admin
 from .serializers import (
     MerchantListSerializer, MerchantDetailSerializer, MerchantUpdateSerializer,
     MerchantStatusUpdateSerializer, MerchantBatchActionSerializer, MerchantCreateSerializer

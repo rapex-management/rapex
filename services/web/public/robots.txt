@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+# Allow access to static assets
+Allow: /assets/
+Allow: /_next/static/
+
+# Disallow admin and authentication pages
+Disallow: /admin/
+Disallow: /merchant/login
+Disallow: /admin/login
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://rapex.com/sitemap.xml

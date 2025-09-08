@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Admin, Merchant, MerchantDocument, EmailVerification, MCC, BusinessType, MerchantRegistrationSession
+from .models import Admin, Rider, User, EmailVerification
+from apps.merchants.models import Merchant, MerchantDocument, BusinessCategory, BusinessType, MerchantRegistrationSession
 
 
 class LoginSerializer(serializers.Serializer):
@@ -108,8 +109,8 @@ class PasswordResetSerializer(serializers.Serializer):
 
 class BusinessCategorySerializer(serializers.ModelSerializer):
     class Meta:
-        model = MCC
-        fields = ['id', 'mcc']
+        model = BusinessCategory
+        fields = ['id', 'category_name', 'description']
 
 
 class BusinessTypeSerializer(serializers.ModelSerializer):
@@ -157,7 +158,7 @@ class MerchantRegistrationStep1Serializer(serializers.Serializer):
         return value
     
     def validate_business_category(self, value):
-        if not MCC.objects.filter(id=value).exists():
+        if not BusinessCategory.objects.filter(id=value).exists():
             raise serializers.ValidationError("Invalid business category")
         return value
     

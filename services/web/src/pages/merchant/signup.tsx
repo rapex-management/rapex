@@ -5,8 +5,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import Notification from '../../components/ui/Notification';
-import LocationPicker from '../../components/ui/LocationPicker';
 import FileUpload from '../../components/ui/FileUpload';
+import MapPickerModal from '../../components/ui/MapPickerModal';
 
 interface FormData {
   // Step 1: General Info
@@ -41,12 +41,15 @@ const MerchantSignup = () => {
   const [otpCode, setOtpCode] = useState('');
   const [sessionId, setSessionId] = useState(''); // Changed from merchantId to sessionId
   const [isCompleted, setIsCompleted] = useState(false);
-  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
-  const [businessCategories, setBusinessCategories] = useState<Array<{id: number, mcc: string}>>([]);
+  const [businessCategories, setBusinessCategories] = useState<Array<{id: number, category_name: string, description: string}>>([]);
   const [businessTypes, setBusinessTypes] = useState<Array<{id: number, business_type: string, business_category: number}>>([]);
   const [isLoadingBusinessCategories, setIsLoadingBusinessCategories] = useState(false);
   const [isLoadingBusinessTypes, setIsLoadingBusinessTypes] = useState(false);
   const [isSavingStep, setIsSavingStep] = useState(false);
+  
+  // Location picker states (simplified for modal approach)
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  
   const [notification, setNotification] = useState<{
     isVisible: boolean;
     type: 'success' | 'error' | 'warning' | 'info';
@@ -76,31 +79,74 @@ const MerchantSignup = () => {
     barangay: '',
     street_name: '',
     house_number: '',
-    latitude: 14.4167, // Kawit, Cavite coordinates
-    longitude: 120.9047,
+    latitude: null,
+    longitude: null,
     documents: {}
   });
 
   const steps = ['General Info', 'Location', 'Documents', 'Verification'];
 
-  const showNotification = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+  const showNotification = useCallback((type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
     setNotification({
       isVisible: true,
       type,
       title,
       message
     });
-  };
+  }, []);
 
   const hideNotification = () => {
     setNotification(prev => ({ ...prev, isVisible: false }));
   };
 
+  // Google Maps functions
+  const getCurrentLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      showNotification('error', 'Geolocation Error', 'Geolocation is not supported by this browser.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        setFormData(prev => ({
+          ...prev,
+          latitude: lat,
+          longitude: lng
+        }));
+        
+        showNotification('success', 'Location Updated', 'Your current location has been set successfully.');
+      },
+      (error) => {
+        let errorMessage = 'Unable to retrieve your location.';
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location access denied. Please enable location services and try again.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information is unavailable.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out.';
+            break;
+        }
+        showNotification('error', 'Location Error', errorMessage);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000 // 5 minutes
+      }
+    );
+  }, [showNotification]);
+
   // Data fetching functions
   const fetchBusinessCategories = useCallback(async () => {
     setIsLoadingBusinessCategories(true);
     try {
-      const response = await fetch('/api/proxy/data/business-category');
+      const response = await fetch('/api/proxy/data/business-categories/');
       const data = await response.json();
       if (data.success) {
         setBusinessCategories(data.data);
@@ -112,7 +158,7 @@ const MerchantSignup = () => {
     } finally {
       setIsLoadingBusinessCategories(false);
     }
-  }, []);
+  }, [showNotification]);
 
   const fetchBusinessTypes = useCallback(async (businessCategoryId?: string) => {
     setIsLoadingBusinessTypes(true);
@@ -130,7 +176,18 @@ const MerchantSignup = () => {
     } finally {
       setIsLoadingBusinessTypes(false);
     }
-  }, []);
+  }, [showNotification]);
+
+  // Handle location selection from modal
+  const handleLocationSelect = useCallback((lat: number, lng: number) => {
+    setFormData(prev => ({
+      ...prev,
+      latitude: lat,
+      longitude: lng
+    }));
+    
+    showNotification('success', 'Location Set', 'Business location has been successfully updated.');
+  }, [showNotification]);
 
   // Load initial data
   useEffect(() => {
@@ -661,30 +718,6 @@ const MerchantSignup = () => {
     }
   };
 
-  const handlePickLocation = () => {
-    setIsMapModalOpen(true);
-  };
-
-  const handleLocationSelect = (lat: number, lng: number) => {
-    setFormData(prev => ({
-      ...prev,
-      latitude: lat,
-      longitude: lng
-    }));
-    
-    // Enhanced notification with location context
-    let locationName = 'Location';
-    if (lat >= 14.40 && lat <= 14.43 && lng >= 120.90 && lng <= 120.92) {
-      locationName = 'Kawit, Cavite area';
-    } else if (lat >= 14.50 && lat <= 14.70 && lng >= 120.90 && lng <= 121.10) {
-      locationName = 'Metro Manila area';
-    } else if (lat >= 14.30 && lat <= 14.50 && lng >= 120.80 && lng <= 121.00) {
-      locationName = 'Cavite Province area';
-    }
-    
-    showNotification('success', 'Location Selected', `${locationName} coordinates set: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-  };
-
   if (isCompleted) {
     return (
       <>
@@ -859,7 +892,7 @@ const MerchantSignup = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Dropdown
                 label="Business Category"
-                options={businessCategories.map(category => ({ value: category.id.toString(), label: category.mcc }))}
+                options={businessCategories.map(category => ({ value: category.id.toString(), label: category.category_name }))}
                 value={formData.businessCategory}
                 onChange={handleBusinessCategoryChange}
                 required
@@ -1016,40 +1049,73 @@ const MerchantSignup = () => {
               />
             </div>
 
-            <div className="border-2 border-dashed border-gray-200 rounded-lg p-6">
-              <div className="text-center">
-                <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Business Location</h3>
-                <p className="text-gray-600 mb-4">
-                  Default location is set to Kawit, Cavite, Philippines. Click below to adjust if needed.
-                </p>
-                {formData.latitude && formData.longitude ? (
-                  <div className="mb-4">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                      ✓ Location Set: Kawit, Cavite
-                    </span>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}
-                    </p>
-                  </div>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handlePickLocation}
-                  leftIcon={
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  }
-                >
-                  {formData.latitude && formData.longitude ? 'Adjust Location' : 'Set Location'}
-                </Button>
-              </div>
+            {/* Latitude and Longitude Fields - Side by Side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Latitude"
+                type="text"
+                value={formData.latitude?.toString() || ''}
+                placeholder="Latitude will be auto-populated"
+                disabled
+                leftIcon={
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                }
+                variant="outlined"
+                size="md"
+                className="bg-gray-50"
+              />
+              
+              <Input
+                label="Longitude"
+                type="text"
+                value={formData.longitude?.toString() || ''}
+                placeholder="Longitude will be auto-populated"
+                disabled
+                leftIcon={
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                }
+                variant="outlined"
+                size="md"
+                className="bg-gray-50"
+              />
+            </div>
+
+            {/* Location Action Buttons - Side by Side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsMapModalOpen(true)}
+                leftIcon={
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                }
+                className="w-full"
+              >
+                Choose Location
+              </Button>
+              
+              <Button
+                type="button"
+                variant="outline"
+                onClick={getCurrentLocation}
+                leftIcon={
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                }
+                className="w-full"
+              >
+                Use Current Location
+              </Button>
             </div>
           </div>
         );
@@ -1277,40 +1343,88 @@ const MerchantSignup = () => {
               <div className="w-full max-w-2xl space-y-6 min-h-full flex flex-col justify-start py-4">
                   
                   {/* Header */}
-                  <div className="text-center space-y-3">
-                    <div className="flex items-center justify-center mb-4">
-                      <div className="w-14 h-14 rounded-xl overflow-hidden p-0 shadow-xl flex items-center justify-center">
+                  <div className="flex items-center justify-center space-x-6 mb-8">
+                    {/* Logo */}
+                    <div className="flex-shrink-0">
+                      <div className="w-16 h-16 rounded-xl overflow-hidden p-0 shadow-xl flex items-center justify-center bg-gradient-to-br from-orange-500 to-pink-600">
                         <Image src="/assets/rapexlogosquare.png" alt="Rapex logo" width={200} height={200} className="w-full h-full object-cover" />
                       </div>
                     </div>
-                    <h2 className="text-2xl font-bold text-gray-900">Create Merchant Account</h2>
-                    <p className="text-gray-600 text-sm">Join thousands of merchants using Rapex</p>
+                    
+                    {/* Title and Subtitle */}
+                    <div className="text-center">
+                      <h2 className="text-2xl font-bold text-gray-900 leading-tight">Create Merchant Account</h2>
+                      <p className="text-gray-600 text-sm mt-1">Join thousands of merchants using Rapex</p>
+                    </div>
                   </div>
 
                   {/* Progress Steps */}
-                  <div className="flex justify-between items-center mb-8">
-                    {steps.map((step, index) => (
-                      <div key={index} className="flex items-center">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all duration-200 ${
-                          index <= currentStep 
-                            ? 'bg-orange-500 text-white' 
-                            : 'bg-gray-200 text-gray-500'
-                        }`}>
-                          {index < currentStep ? (
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          ) : (
-                            index + 1
+                  <div className="mb-10">
+                    <div className="flex items-center justify-between">
+                      {steps.map((step, index) => (
+                        <React.Fragment key={index}>
+                          {/* Step Circle with Icon and Label */}
+                          <div className="flex flex-col items-center space-y-3">
+                            {/* Step Circle with Icon */}
+                            <div className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg ${
+                              index <= currentStep 
+                                ? 'bg-gradient-to-br from-orange-500 to-pink-600 text-white transform scale-110' 
+                                : 'bg-white text-gray-400 border-2 border-gray-200'
+                            }`}>
+                              {index < currentStep ? (
+                                // Completed - Check Icon
+                                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              ) : index === 0 ? (
+                                // General Info - User Icon
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                              ) : index === 1 ? (
+                                // Location - Map Pin Icon
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                              ) : index === 2 ? (
+                                // Documents - Document Icon
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              ) : (
+                                // Verification - Shield Check Icon
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                              )}
+                            </div>
+                            
+                            {/* Step Label */}
+                            <div className="text-center">
+                              <span className={`text-xs font-medium transition-colors duration-300 ${
+                                index <= currentStep 
+                                  ? 'text-orange-600' 
+                                  : 'text-gray-500'
+                              }`}>
+                                {step}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Progress Line between steps */}
+                          {index < steps.length - 1 && (
+                            <div className="flex-1 mx-4 mt-[-40px]">
+                              <div className={`h-1 rounded-full transition-all duration-500 ease-in-out ${
+                                index < currentStep 
+                                  ? 'bg-gradient-to-r from-orange-500 to-pink-600' 
+                                  : 'bg-gray-200'
+                              }`} />
+                            </div>
                           )}
-                        </div>
-                        {index < steps.length - 1 && (
-                          <div className={`w-16 h-1 mx-2 transition-all duration-200 ${
-                            index < currentStep ? 'bg-orange-500' : 'bg-gray-200'
-                          }`} />
-                        )}
-                      </div>
-                    ))}
+                        </React.Fragment>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Step Content */}
@@ -1391,13 +1505,15 @@ const MerchantSignup = () => {
         duration={5000}
         position="top-right"
       />
-      
-      <LocationPicker
+
+      {/* Map Picker Modal */}
+      <MapPickerModal
         isOpen={isMapModalOpen}
         onClose={() => setIsMapModalOpen(false)}
         onLocationSelect={handleLocationSelect}
-        initialLat={formData.latitude || 14.5995}
-        initialLng={formData.longitude || 120.9842}
+        initialLat={formData.latitude}
+        initialLng={formData.longitude}
+        title="Select Your Business Location"
       />
 
       <style jsx>{`

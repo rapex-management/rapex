@@ -1,8 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -10,7 +11,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const token = req.headers.authorization;
 
     if (!token) {
-      return res.status(401).json({ error: 'No authorization token provided' });
+      res.status(401).json({ error: 'No authorization token provided' });
+      return;
     }
 
     const response = await fetch(`${backendUrl}/api/merchants/dashboard/`, {
@@ -24,12 +26,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json(data);
+  res.status(response.status).json(data); return;
     }
 
-    res.status(200).json(data);
+  res.status(200).json(data); return;
   } catch (error) {
     console.error('Dashboard API error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: 'Internal server error' }); return;
   }
 }

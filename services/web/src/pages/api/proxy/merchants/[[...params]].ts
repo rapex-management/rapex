@@ -2,7 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 
 const API_BASE = process.env.BACKEND_URL ? `${process.env.BACKEND_URL}/api` : 'http://localhost:8000/api';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
   const { params } = req.query;
   
   // Build the path
@@ -72,12 +72,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json(data);
+  res.status(response.status).json(data); return;
     }
 
-    res.status(200).json(data);
+  res.status(200).json(data); return;
   } catch (error) {
     console.error('Proxy error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({ error: 'Internal server error' }); return;
   }
 }

@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import Notification from '../../components/ui/Notification';
+import { useMerchantAuth } from '../../lib/auth/hooks/useMerchantAuth';
 
-const MerchantLogin = () => {
+export default function MerchantLogin() {
   const [formData, setFormData] = useState({
     identifier: '',
     password: ''
@@ -19,6 +21,14 @@ const MerchantLogin = () => {
   });
 
   const router = useRouter();
+  const { login, isAuthenticated } = useMerchantAuth();
+
+  // Check if user is already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/merchant/dashboard');
+    }
+  }, [isAuthenticated, router]);
 
   const showNotification = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
     setNotification({
@@ -37,91 +47,29 @@ const MerchantLogin = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    console.log('🔐 Login form submitted:', { 
-      identifier: formData.identifier, 
-      password: '***',
-      timestamp: new Date().toISOString()
-    });
-
     try {
-      const response = await fetch('/api/proxy/merchant/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          identifier: formData.identifier,
-          password: formData.password
-        }),
+      const result = await login({
+        identifier: formData.identifier,
+        password: formData.password
       });
 
-      console.log('🌐 Login response received:', {
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText
-      });
-
-      const data = await response.json();
-      console.log('📦 Response data:', {
-        ...data,
-        access: data.access ? `${data.access.substring(0, 30)}...` : 'missing',
-        refresh: data.refresh ? `${data.refresh.substring(0, 30)}...` : 'missing'
-      });
-
-      if (response.ok) {
-        // Store authentication data
-        localStorage.setItem('merchant_token', data.access);
-        localStorage.setItem('merchant_refresh_token', data.refresh);
-        localStorage.setItem('merchant', JSON.stringify({
-          id: data.id,
-          email: data.email,
-          merchant_name: data.merchant_name,
-          owner_name: data.owner_name,
-          phone: data.phone,
-          status: data.status,
-          username: data.username
-        }));
-        
-        console.log('💾 Data stored in localStorage:', {
-          token_stored: !!localStorage.getItem('merchant_token'),
-          refresh_stored: !!localStorage.getItem('merchant_refresh_token'),
-          merchant_stored: !!localStorage.getItem('merchant'),
-          merchant_data: JSON.parse(localStorage.getItem('merchant') || '{}')
-        });
-        
+      if (result.success) {
         showNotification('success', 'Welcome Back!', 'Login successful. Redirecting to dashboard...');
-        
-        console.log('🔄 Starting navigation to dashboard...');
-        
-        // Immediate redirect without delay for better UX
-        setTimeout(() => {
-          console.log('🏃‍♂️ Executing navigation to /merchant/dashboard');
-          // Use window.location for more reliable navigation
-          window.location.href = '/merchant/dashboard';
-        }, 500);
+        router.replace('/merchant/dashboard');
       } else {
-        console.error('❌ Login failed with response:', data);
-        // Handle specific status codes
-        if (data.status_code === 'PENDING_APPROVAL') {
-          showNotification('info', 'Account Under Review', data.message || 'Your account is pending approval.');
+        // Handle specific merchant error cases
+        if (result.error?.includes('pending approval')) {
+          showNotification('info', 'Account Under Review', 'Your account is pending approval.');
           setTimeout(() => {
             router.push('/merchant/pending-approval');
           }, 2000);
-        } else if (data.status_code === 'ACCOUNT_BANNED') {
-          showNotification('error', 'Account Suspended', data.message || 'Your account has been suspended.');
-        } else if (data.status_code === 'ACCOUNT_FROZEN') {
-          showNotification('warning', 'Account Frozen', data.message || 'Your account is temporarily frozen.');
-        } else if (data.status_code === 'ACCOUNT_DELETED') {
-          showNotification('error', 'Account Not Found', data.message || 'This account is no longer active.');
-        } else if (data.status_code === 'ACCOUNT_INACTIVE') {
-          showNotification('warning', 'Account Inactive', data.message || 'Your account is not currently accessible.');
         } else {
-          showNotification('error', 'Login Failed', data.detail || 'Invalid credentials. Please try again.');
+          showNotification('error', 'Login Failed', result.error || 'Invalid credentials. Please try again.');
         }
       }
-    } catch (error) {
-      console.error('💥 Login error:', error);
-      showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'An unexpected error occurred';
+      showNotification('error', 'Connection Error', message);
     } finally {
       setIsLoading(false);
     }
@@ -162,7 +110,14 @@ const MerchantLogin = () => {
                   <div className="text-center space-y-3">
                     <div className="flex items-center justify-center lg:hidden mb-4">
                       <div className="w-14 h-14 rounded-xl overflow-hidden p-0 shadow-xl flex items-center justify-center">
-                        <img src="/assets/rapexlogosquare.png" alt="Rapex logo" className="w-full h-full object-cover" />
+                        <Image 
+                          src="/assets/rapexlogosquare.png" 
+                          alt="Rapex logo" 
+                          width={56} 
+                          height={56} 
+                          className="w-full h-full object-cover"
+                          priority
+                        />
                       </div>
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900">Merchant Login</h2>
@@ -267,7 +222,7 @@ const MerchantLogin = () => {
                     {/* Registration & Admin Access */}
                     <div className="border-t border-gray-100">
                       <p className="text-center text-sm text-gray-500 mb-3">
-                        Doesn't have an account?{' '}
+                        Doesn&#39;t have an account?{' '}
                         <Link href="/merchant/signup" className="text-orange-600 font-medium hover:text-orange-700">
                           Sign up here
                         </Link>
@@ -298,7 +253,13 @@ const MerchantLogin = () => {
                   <div className="mb-0">
                     <div className="w-24 h-24 bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 shadow-xl flex items-center justify-center">
                       <div className="w-16 h-16 rounded-xl overflow-hidden shadow-lg">
-                        <img src="/assets/rapexlogosquare.png" alt="Rapex logo" className="w-full h-full object-cover" />
+                        <Image 
+                          src="/assets/rapexlogosquare.png" 
+                          alt="Rapex logo" 
+                          width={64} 
+                          height={64} 
+                          className="w-full h-full object-cover"
+                        />
                       </div>
                     </div>
                   </div>
@@ -396,6 +357,4 @@ const MerchantLogin = () => {
       `}</style>
     </>
   );
-};
-
-export default MerchantLogin;
+}

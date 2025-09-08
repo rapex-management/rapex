@@ -20,7 +20,8 @@ from .serializers import (
     MerchantRegistrationStep2Serializer, MerchantRegistrationStep3Serializer,
     MerchantRegistrationSessionSerializer, MerchantFinalRegistrationSerializer
 )
-from .models import Admin, Merchant, MCC, BusinessType, MerchantRegistrationSession, EmailVerification
+from .models import Admin, EmailVerification
+from apps.merchants.models import Merchant, BusinessCategory, BusinessType, MerchantRegistrationSession
 from .authentication import get_tokens_for_user
 
 
@@ -493,7 +494,7 @@ class BusinessCategoryListView(APIView):
     """
     def get(self, request):
         try:
-            business_categories = MCC.objects.all().order_by('mcc')
+            business_categories = BusinessCategory.objects.all().order_by('category_name')
             serializer = BusinessCategorySerializer(business_categories, many=True)
             return Response({
                 'success': True,

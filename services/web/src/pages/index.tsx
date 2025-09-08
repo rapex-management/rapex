@@ -1,12 +1,31 @@
 import Link from 'next/link';
+import { useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 
 export default function Home() {
+  // Prefetch critical routes for instant navigation
+  useEffect(() => {
+    const prefetchRoutes = async () => {
+      try {
+        // Prefetch admin and merchant login pages for instant loading
+        await Promise.all([
+          fetch('/_next/static/chunks/pages/admin/login.js').catch(() => {}),
+          fetch('/_next/static/chunks/pages/merchant/login.js').catch(() => {}),
+          fetch('/_next/static/chunks/pages/merchant/signup.js').catch(() => {}),
+        ]);
+      } catch (error) {
+        // Ignore prefetch errors
+        console.warn('Route prefetch failed:', error);
+      }
+    };
+
+    prefetchRoutes();
+  }, []);
   return (
     <div className="min-h-screen bg-gradient-primary flex items-center justify-center px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl w-full">
-        {/* Header Section */}
+        {/* Header Section - Manual Refresh Mode Test */}
         <div className="text-center mb-12">
           <div className="mx-auto h-24 w-24 bg-white rounded-full flex items-center justify-center shadow-2xl mb-6">
             <div className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">

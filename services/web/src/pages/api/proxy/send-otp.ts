@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).end()
+export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
+  if (req.method !== 'POST') { res.status(405).end(); return }
   
   try {
     const { email, purpose, user_type } = req.body
@@ -17,8 +17,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
     
     const data = await backendRes.json()
-    res.status(backendRes.status).json(data)
+    res.status(backendRes.status).json(data); return
   } catch {
-    res.status(500).json({ detail: 'proxy error' })
+    res.status(500).json({ detail: 'proxy error' }); return
   }
 }

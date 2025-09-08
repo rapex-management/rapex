@@ -1,5 +1,5 @@
 from django.contrib import admin
-from apps.webauth.models import Merchant, MerchantDocument
+from .models import Merchant, MerchantDocument
 
 
 @admin.register(Merchant)

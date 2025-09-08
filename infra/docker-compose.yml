@@ -21,6 +21,7 @@ services:
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     env_file:
       - ../services/backend/.env
+      - ../.env.dev
     volumes:
       - ../services/backend:/app
     ports:
@@ -28,6 +29,8 @@ services:
     depends_on:
       - db
       - redis
+    environment:
+      - PYTHONUNBUFFERED=1
 
   realtime:
     build: ../services/realtime
@@ -40,22 +43,44 @@ services:
       - "4000:4000"
     depends_on:
       - redis
+    environment:
+      - ENABLE_DEV_RELOAD=true
+      - DEV_RELOAD_SECRET=dev-secret
 
   web:
-    build: ../services/web
+    build: 
+      context: ../services/web
+      dockerfile: Dockerfile.dev
     command: npm run dev
     volumes:
       - ../services/web:/app
       - /app/node_modules
+      # Exclude .next for faster hot reloading
+      - web_next_cache:/app/.next
     ports:
       - "3000:3000"
+    env_file:
+      - ../.env.dev
     environment:
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+      # OPTIMIZED polling for INSTANT hot reloading
       - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=250
       - WATCHPACK_POLLING=true
+      - POLLING=250
+      # Enable React Fast Refresh
+      - FAST_REFRESH=true
+      - NEXT_PRIVATE_SKIP_VALIDATION=true
+      - DISABLE_ESLINT_PLUGIN=true
+      # Optimize for development speed
+      - NODE_OPTIONS=--max-old-space-size=4096
       - BACKEND_URL=http://backend:8000
+      - NEXT_PUBLIC_RELOAD_WS_URL=http://localhost:4000/reload
       - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-YOUR_GOOGLE_MAPS_API_KEY}
     depends_on:
       - backend
 
 volumes:
   db_data:
+  web_next_cache:

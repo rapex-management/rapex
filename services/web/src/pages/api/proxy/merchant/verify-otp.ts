@@ -1,8 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -20,20 +21,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const data = await response.text();
 
     // Forward the response
-    res.status(response.status);
+  res.status(response.status);
     
     try {
       const jsonData = JSON.parse(data);
-      res.json(jsonData);
+  res.json(jsonData); return;
     } catch {
-      res.send(data);
+  res.send(data); return;
     }
 
   } catch (error) {
     console.error('Proxy error:', error);
-    res.status(500).json({ 
+  res.status(500).json({ 
       message: 'Internal server error',
       error: error instanceof Error ? error.message : 'Unknown error'
-    });
+  });
+  return;
   }
 }

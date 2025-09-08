@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import Notification from '../../components/ui/Notification';
+import { useAdminAuth } from '../../lib/auth/hooks/useAdminAuth';
 
-const AdminLogin = () => {
+export default function AdminLogin() {
   const [formData, setFormData] = useState({
     identifier: '',
     password: ''
@@ -19,6 +21,14 @@ const AdminLogin = () => {
   });
 
   const router = useRouter();
+  const { login, isAuthenticated } = useAdminAuth();
+
+  // Check if user is already authenticated and redirect
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/admin/dashboard');
+    }
+  }, [isAuthenticated, router]);
 
   const showNotification = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
     setNotification({
@@ -38,40 +48,20 @@ const AdminLogin = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/proxy/admin/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          identifier: formData.identifier,
-          password: formData.password
-        }),
+      const result = await login({
+        identifier: formData.identifier,
+        password: formData.password
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        localStorage.setItem('token', data.access);
-        localStorage.setItem('refresh', data.refresh);
-        localStorage.setItem('admin', JSON.stringify({
-          id: data.id, 
-          username: data.username, 
-          email: data.email, 
-          first_name: data.first_name,
-          last_name: data.last_name
-        }));
-        
+      if (result.success) {
         showNotification('success', 'Welcome Back!', 'Login successful. Redirecting to dashboard...');
-        
-        setTimeout(() => {
-          router.push('/admin');
-        }, 1500);
+        router.replace('/admin/dashboard');
       } else {
-        showNotification('error', 'Login Failed', data.detail || 'Invalid credentials. Please try again.');
+        showNotification('error', 'Login Failed', result.error || 'Invalid credentials. Please try again.');
       }
-    } catch {
-      showNotification('error', 'Connection Error', 'Unable to connect to server. Please try again.');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'An unexpected error occurred';
+      showNotification('error', 'Login Failed', message);
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +112,14 @@ const AdminLogin = () => {
                   <div className="mb-8">
                     <div className="w-24 h-24 bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 shadow-xl flex items-center justify-center">
                       <div className="w-16 h-16 rounded-xl overflow-hidden shadow-lg">
-                        <img src="/assets/rapexlogosquare.png" alt="Rapex logo" className="w-full h-full object-cover" />
+                        <Image 
+                          src="/assets/rapexlogosquare.png" 
+                          alt="Rapex logo" 
+                          width={64} 
+                          height={64} 
+                          className="w-full h-full object-cover"
+                          priority
+                        />
                       </div>
                     </div>
                   </div>
@@ -150,7 +147,14 @@ const AdminLogin = () => {
                   <div className="text-center space-y-3">
                     <div className="flex items-center justify-center lg:hidden mb-4">
                       <div className="w-14 h-14 rounded-xl overflow-hidden p-0 shadow-xl flex items-center justify-center">
-                        <img src="/assets/rapexlogosquare.png" alt="Rapex logo" className="w-full h-full object-cover" />
+                        <Image 
+                          src="/assets/rapexlogosquare.png" 
+                          alt="Rapex logo" 
+                          width={56} 
+                          height={56} 
+                          className="w-full h-full object-cover"
+                          priority
+                        />
                       </div>
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900">Admin Login</h2>
@@ -286,6 +290,4 @@ const AdminLogin = () => {
       `}</style>
     </>
   );
-};
-
-export default AdminLogin;
+}

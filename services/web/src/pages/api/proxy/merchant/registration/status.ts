@@ -3,7 +3,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 // Use BACKEND_URL environment variable set in docker-compose
 const API_BASE_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
       const queryParams = new URLSearchParams();

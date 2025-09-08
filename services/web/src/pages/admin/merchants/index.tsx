@@ -9,13 +9,8 @@ import { ConfirmationModal } from '../../../components/ui/ConfirmationModal';
 import { Card } from '../../../components/ui/Card';
 import { merchantService } from '../../../services/merchantService';
 import { Merchant, MerchantFilters } from '../../../types/merchant';
-
-interface AdminUser {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-}
+import { useAdminAuth } from '../../../lib/auth/hooks/useAdminAuth';
+import { AdminAuthGuard } from '../../../lib/auth/guards/AdminAuthGuard';
 
 interface MerchantStats {
   total: number;
@@ -28,7 +23,7 @@ interface MerchantStats {
 }
 
 const MerchantManagement = () => {
-  const [user, setUser] = useState<AdminUser | null>(null);
+  const { user, logout } = useAdminAuth();
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<MerchantStats>({
@@ -77,18 +72,6 @@ const MerchantManagement = () => {
   });
 
   const router = useRouter();
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const adminData = localStorage.getItem('admin');
-    
-    if (!token || !adminData) {
-      router.push('/admin/login');
-      return;
-    }
-    
-    setUser(JSON.parse(adminData));
-  }, [router]);
 
   const loadMerchants = useCallback(async () => {
     try {
@@ -145,23 +128,8 @@ const MerchantManagement = () => {
   }, [user, loadMerchants]);
 
   const handleLogout = async () => {
-    try {
-      const refresh = localStorage.getItem('refresh');
-      if (refresh) {
-        await fetch('/api/proxy/logout', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({refresh})
-        });
-      }
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh');
-      localStorage.removeItem('admin');
-      router.push('/admin/login');
-    }
+    await logout();
+    router.push('/admin/login');
   };
 
   const handleSort = (key: string, direction: 'asc' | 'desc') => {
@@ -397,7 +365,7 @@ const MerchantManagement = () => {
     {
       id: 'dashboard',
       label: 'Dashboard',
-      href: '/admin',
+      href: '/admin/dashboard',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2V7z" />
@@ -425,11 +393,12 @@ const MerchantManagement = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar
-        items={sidebarItems}
-        userInfo={{
-          name: user.first_name + ' ' + user.last_name,
+    <AdminAuthGuard>
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar
+          items={sidebarItems}
+          userInfo={{
+            name: user.first_name + ' ' + user.last_name,
           email: user.email,
           role: 'Admin'
         }}
@@ -650,6 +619,7 @@ const MerchantManagement = () => {
         type={confirmModal.type === 'delete' ? 'danger' : confirmModal.type === 'reject' ? 'warning' : 'info'}
       />
     </div>
+    </AdminAuthGuard>
   );
 };
 

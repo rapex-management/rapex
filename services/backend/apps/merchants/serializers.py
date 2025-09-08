@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from apps.webauth.models import Merchant, MerchantDocument, Admin
+from .models import Merchant, MerchantDocument
+from apps.webauth.models import Admin
 from decimal import Decimal
 
 

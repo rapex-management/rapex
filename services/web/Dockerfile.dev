@@ -1,0 +1,32 @@
+FROM node:18-alpine
+
+# Install dependencies for better file watching on different platforms
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
+
+# Copy tsconfig and other config files
+COPY tsconfig.json next.config.ts tailwind.config.js postcss.config.mjs ./
+COPY next-env.d.ts eslint.config.mjs ./
+
+# Create the source directory structure
+RUN mkdir -p src
+
+# Set development environment variables for optimal hot reload
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV CHOKIDAR_USEPOLLING=false
+ENV WATCHPACK_POLLING=false
+
+# Enable Next.js Fast Refresh
+ENV FAST_REFRESH=true
+
+# Expose the development port
+EXPOSE 3000
+
+# Development command with hot reload
+CMD ["npm", "run", "dev"]

@@ -80,7 +80,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     setIsDragOver(false);
 
     const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
+    if (files.length > 0 && files[0]) {
       handleFileSelection(files[0]);
     }
   }, [handleFileSelection]);

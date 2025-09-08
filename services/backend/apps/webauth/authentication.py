@@ -5,7 +5,8 @@ from django.contrib.auth.models import AnonymousUser
 import jwt
 from django.conf import settings
 
-from .models import Admin, Merchant, User
+from .models import Admin, User
+from apps.merchants.models import Merchant
 
 
 class CustomJWTAuthentication(JWTAuthentication):

@@ -1,0 +1,224 @@
+from rest_framework import serializers
+from .models import (
+    Product, ProductType, Category, Brand, Shop, 
+    ProductImage, ProductVariant, ProductTag, ProductReview
+)
+from apps.merchants.models import Merchant
+
+
+class ProductTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductType
+        fields = ['type_id', 'name']
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    parent_name = serializers.CharField(source='parent.name', read_only=True)
+    subcategories = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Category
+        fields = ['category_id', 'name', 'parent', 'parent_name', 'subcategories', 'created_at', 'updated_at']
+    
+    def get_subcategories(self, obj):
+        if obj.subcategories.exists():
+            return CategorySerializer(obj.subcategories.all(), many=True).data
+        return []
+
+
+class BrandSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Brand
+        fields = ['brand_id', 'name', 'description', 'created_at']
+
+
+class ShopSerializer(serializers.ModelSerializer):
+    merchant_name = serializers.CharField(source='merchant.merchant_name', read_only=True)
+    
+    class Meta:
+        model = Shop
+        fields = ['shop_id', 'merchant', 'merchant_name', 'shop_name', 'description', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['merchant']
+
+
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ['image_id', 'product', 'image_url', 'is_primary', 'alt_text', 'order', 'created_at']
+        read_only_fields = ['product']
+
+
+class ProductVariantSerializer(serializers.ModelSerializer):
+    final_price = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = ProductVariant
+        fields = [
+            'variant_id', 'product', 'variant_name', 'price_difference', 
+            'stock', 'sku', 'is_active', 'final_price', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['product']
+
+
+class ProductTagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductTag
+        fields = ['tag_id', 'product', 'tag_name', 'created_at']
+        read_only_fields = ['product']
+
+
+class ProductReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductReview
+        fields = [
+            'review_id', 'product', 'user_id', 'rating', 'comment', 
+            'is_verified_purchase', 'is_approved', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['product', 'user_id', 'is_verified_purchase']
+
+
+class ProductListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for product listings"""
+    shop_name = serializers.CharField(source='shop.shop_name', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    type_name = serializers.CharField(source='type.get_name_display', read_only=True)
+    primary_image = serializers.SerializerMethodField()
+    total_reviews = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Product
+        fields = [
+            'product_id', 'name', 'price', 'stock', 'status', 'shop_name',
+            'category_name', 'brand_name', 'type_name', 'primary_image',
+            'total_reviews', 'average_rating', 'created_at', 'updated_at'
+        ]
+    
+    def get_primary_image(self, obj):
+        primary_image = obj.primary_image
+        if primary_image:
+            return {
+                'image_id': primary_image.image_id,
+                'image_url': primary_image.image_url,
+                'alt_text': primary_image.alt_text
+            }
+        return None
+    
+    def get_total_reviews(self, obj):
+        return obj.reviews.filter(is_approved=True).count()
+    
+    def get_average_rating(self, obj):
+        reviews = obj.reviews.filter(is_approved=True)
+        if reviews.exists():
+            return round(sum(review.rating for review in reviews) / reviews.count(), 1)
+        return 0
+
+
+class ProductDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for single product view"""
+    shop = ShopSerializer(read_only=True)
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    type = ProductTypeSerializer(read_only=True)
+    images = ProductImageSerializer(many=True, read_only=True)
+    variants = ProductVariantSerializer(many=True, read_only=True)
+    tags = ProductTagSerializer(many=True, read_only=True)
+    reviews = ProductReviewSerializer(many=True, read_only=True)
+    total_reviews = serializers.SerializerMethodField()
+    average_rating = serializers.SerializerMethodField()
+    is_in_stock = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Product
+        fields = [
+            'product_id', 'shop', 'type', 'name', 'description', 'price', 
+            'stock', 'category', 'brand', 'status', 'sku', 'weight', 
+            'dimensions', 'images', 'variants', 'tags', 'reviews',
+            'total_reviews', 'average_rating', 'is_in_stock',
+            'created_at', 'updated_at'
+        ]
+    
+    def get_total_reviews(self, obj):
+        return obj.reviews.filter(is_approved=True).count()
+    
+    def get_average_rating(self, obj):
+        reviews = obj.reviews.filter(is_approved=True)
+        if reviews.exists():
+            return round(sum(review.rating for review in reviews) / reviews.count(), 1)
+        return 0
+
+
+class ProductCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating products"""
+    images = ProductImageSerializer(many=True, required=False)
+    variants = ProductVariantSerializer(many=True, required=False)
+    tags = ProductTagSerializer(many=True, required=False)
+    
+    class Meta:
+        model = Product
+        fields = [
+            'product_id', 'type', 'name', 'description', 'price', 
+            'stock', 'category', 'brand', 'status', 'sku', 'weight', 
+            'dimensions', 'images', 'variants', 'tags'
+        ]
+        read_only_fields = ['product_id']
+    
+    def create(self, validated_data):
+        images_data = validated_data.pop('images', [])
+        variants_data = validated_data.pop('variants', [])
+        tags_data = validated_data.pop('tags', [])
+        
+        # Get merchant's shop
+        merchant = self.context['request'].user
+        shop, created = Shop.objects.get_or_create(
+            merchant=merchant,
+            defaults={'shop_name': merchant.merchant_name}
+        )
+        validated_data['shop'] = shop
+        
+        product = Product.objects.create(**validated_data)
+        
+        # Create images
+        for image_data in images_data:
+            ProductImage.objects.create(product=product, **image_data)
+        
+        # Create variants
+        for variant_data in variants_data:
+            ProductVariant.objects.create(product=product, **variant_data)
+        
+        # Create tags
+        for tag_data in tags_data:
+            ProductTag.objects.create(product=product, **tag_data)
+        
+        return product
+    
+    def update(self, instance, validated_data):
+        images_data = validated_data.pop('images', None)
+        variants_data = validated_data.pop('variants', None)
+        tags_data = validated_data.pop('tags', None)
+        
+        # Update product fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update images if provided
+        if images_data is not None:
+            instance.images.all().delete()
+            for image_data in images_data:
+                ProductImage.objects.create(product=instance, **image_data)
+        
+        # Update variants if provided
+        if variants_data is not None:
+            instance.variants.all().delete()
+            for variant_data in variants_data:
+                ProductVariant.objects.create(product=instance, **variant_data)
+        
+        # Update tags if provided
+        if tags_data is not None:
+            instance.tags.all().delete()
+            for tag_data in tags_data:
+                ProductTag.objects.create(product=instance, **tag_data)
+        
+        return instance

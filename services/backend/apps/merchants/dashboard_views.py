@@ -6,7 +6,7 @@ from django.db.models import Count, Sum, Avg
 from django.utils import timezone
 from datetime import timedelta
 
-from apps.webauth.models import Merchant
+from .models import Merchant
 
 
 @api_view(['GET'])

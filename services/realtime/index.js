@@ -5,11 +5,14 @@ const jwt = require('jsonwebtoken');
 const Redis = require('ioredis');
 
 const app = express();
+app.use(express.json());
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const JWT_SECRET = process.env.SIMPLE_JWT_SECRET || 'supersecret';
+const ENABLE_DEV_RELOAD = process.env.ENABLE_DEV_RELOAD === 'true';
+const DEV_RELOAD_SECRET = process.env.DEV_RELOAD_SECRET || '';
 
 const sub = new Redis(REDIS_URL);
 // ioredis auto-connects when instantiated; subscribe directly
@@ -27,7 +30,11 @@ sub.on('message', (channel, message) => {
   }
 });
 
+// Auth middleware: skip for reload namespace
 io.use((socket, next) => {
+  if (socket.nsp && socket.nsp.name === '/reload') {
+    return next();
+  }
   const token = socket.handshake.auth?.token;
   if (!token) return next(new Error('Auth error'));
   try {
@@ -45,5 +52,31 @@ io.on('connection', (socket) => {
   }
   socket.on('disconnect', () => {});
 });
+
+// Reload namespace (no auth) for dev live-reload broadcasting
+const reloadNsp = io.of('/reload');
+reloadNsp.on('connection', (socket) => {
+  // no-op; clients just listen for 'reload'
+});
+
+// Optional HTTP endpoint to trigger reload broadcasts from a file watcher
+if (ENABLE_DEV_RELOAD) {
+  app.post('/dev/reload', (req, res) => {
+    const secret = req.get('x-reload-secret') || '';
+    if (DEV_RELOAD_SECRET && secret !== DEV_RELOAD_SECRET) {
+      return res.status(401).json({ ok: false, error: 'unauthorized' });
+    }
+    const body = req.body || {};
+    const payload = {
+      reason: body.reason || 'change',
+      source: body.source || 'unknown',
+      file: body.file || null,
+      ts: Date.now(),
+    };
+  console.log('[dev-reload] Emitting reload:', payload);
+    reloadNsp.emit('reload', payload);
+    return res.json({ ok: true });
+  });
+}
 
 server.listen(4000, () => console.log('Realtime listening on 4000'));
