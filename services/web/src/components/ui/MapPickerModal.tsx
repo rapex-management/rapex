@@ -280,12 +280,49 @@ const MapPickerModal: React.FC<MapPickerModalProps> = ({
           setIsLoading(false);
         });
     }
-    
+
+    // If modal reopens and the map is already initialized, the map container
+    // may be hidden during initialization (modal closed) which causes Google
+    // Maps to render blank. Force a resize and ensure a marker is created
+    // / updated for an existing initial location without reinitializing the map.
+    if (isOpen && isInitializedRef.current && window.google?.maps && mapInstanceRef.current) {
+      const map = mapInstanceRef.current;
+
+      // Small delay so modal open/layout animation completes and container
+      // has a proper size before triggering resize/center operations.
+      setTimeout(() => {
+        try {
+          // Force Google Maps to recalculate layout / tiles
+          window.google.maps.event.trigger(map, 'resize');
+
+          if (initialLocation) {
+            // Ensure the marker exists and is placed at the initial coordinates
+            updateMarkerPosition(initialLocation.lat, initialLocation.lng);
+
+            // Make sure selectedLocation state reflects the initial coords
+            setSelectedLocation(prev => prev ?? { lat: initialLocation.lat, lng: initialLocation.lng });
+
+            // (Re)fetch address for display if needed. Calling the debounced
+            // reverse geocode is safe here — it will update address when ready.
+            debouncedReverseGeocode(initialLocation.lat, initialLocation.lng);
+          } else {
+            // If there's no specific initial location, re-center to current
+            // center to avoid a visual jump.
+            const center = map.getCenter?.();
+            if (center) map.panTo({ lat: center.lat(), lng: center.lng() });
+          }
+        } catch (err) {
+          // Non-fatal, but log so we can investigate if needed
+          console.error('Error while refreshing map on modal reopen:', err);
+        }
+      }, 150);
+    }
+
     // IMPORTANT: Reset to initial location when modal reopens
     if (isOpen && initialLocation && !selectedLocation) {
       setSelectedLocation(initialLocation);
     }
-  }, [isOpen, isMapLoaded, initializeMap, initialLocation, selectedLocation]);
+  }, [isOpen, isMapLoaded, initializeMap, initialLocation, selectedLocation, debouncedReverseGeocode, updateMarkerPosition]);
 
   // Cleanup on modal close to prevent memory leaks
   useEffect(() => {

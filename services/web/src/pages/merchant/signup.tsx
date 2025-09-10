@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import Notification from '../../components/ui/Notification';
 import FileUpload from '../../components/ui/FileUpload';
+import CameraCapture from '../../components/ui/CameraCapture';
 import MapPickerModal from '../../components/ui/MapPickerModal';
 
 interface FormData {
@@ -33,6 +34,7 @@ interface FormData {
   
   // Step 3: Documents
   documents: { [key: string]: File | null };
+  selfieWithId: string | null; // Base64 image data from camera
 }
 
 const MerchantSignup = () => {
@@ -81,7 +83,8 @@ const MerchantSignup = () => {
     house_number: '',
     latitude: null,
     longitude: null,
-    documents: {}
+    documents: {},
+    selfieWithId: null
   });
 
   const steps = ['General Info', 'Location', 'Documents', 'Verification'];
@@ -343,9 +346,15 @@ const MerchantSignup = () => {
   const getRequiredDocuments = () => {
     const registration = parseInt(formData.businessRegistration);
     
+    // Common documents for all business types
+    const commonDocuments = [
+      { key: 'id_document', label: 'Valid ID (Passport, Driver\'s License, UMID, etc.)', required: true }
+    ];
+    
     switch (registration) {
       case 0: // Registered (VAT)
         return [
+          ...commonDocuments,
           { key: 'bir_certificate', label: 'BIR Certificate of Registration (Form 2303)', required: true },
           { key: 'dti_sec_certificate', label: 'DTI Certificate (sole proprietors) or SEC Certificate (corporations/partnerships)', required: true },
           { key: 'business_permit', label: 'Mayor\'s / Business Permit', required: true },
@@ -353,6 +362,7 @@ const MerchantSignup = () => {
         ];
       case 1: // Registered (NON-VAT)
         return [
+          ...commonDocuments,
           { key: 'barangay_permit', label: 'Barangay Permit', required: true },
           { key: 'dti_sec_certificate', label: 'DTI Certificate (sole proprietors) or SEC Certificate (corporations/partnerships)', required: true },
           { key: 'bir_certificate', label: 'BIR Certificate of Registration (Form 2303)', required: false },
@@ -361,7 +371,7 @@ const MerchantSignup = () => {
         ];
       case 2: // Unregistered
       default:
-        return [];
+        return commonDocuments; // Only ID document required for unregistered
     }
   };
 
@@ -424,6 +434,13 @@ const MerchantSignup = () => {
         return true;
 
       case 2: // Documents
+        // Check if selfie with ID is taken
+        if (!formData.selfieWithId) {
+          showNotification('error', 'Validation Error', 'Please take a selfie with your ID.');
+          return false;
+        }
+        
+        // Check required documents
         const requiredDocs = getRequiredDocuments().filter(doc => doc.required);
         for (const doc of requiredDocs) {
           if (!formData.documents[doc.key]) {
@@ -562,10 +579,26 @@ const MerchantSignup = () => {
 
     console.log('Starting document upload with session ID:', sessionId);
     console.log('Documents to upload:', Object.keys(formData.documents));
+    console.log('Selfie with ID:', formData.selfieWithId ? 'Present' : 'Missing');
 
     try {
       const formDataObj = new FormData();
       formDataObj.append('session_id', sessionId);
+      
+      // Add selfie with ID as base64 image
+      if (formData.selfieWithId) {
+        // Convert base64 to blob for upload
+        const base64Data = formData.selfieWithId.split(',')[1];
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'image/jpeg' });
+        formDataObj.append('selfie_with_id', blob, 'selfie_with_id.jpg');
+        console.log('Added selfie with ID to upload');
+      }
       
       // Add uploaded files
       let fileCount = 0;
@@ -577,12 +610,13 @@ const MerchantSignup = () => {
         }
       });
 
-      if (fileCount === 0) {
-        showNotification('error', 'No Files', 'Please upload at least one document before proceeding.');
+      const totalItems = (formData.selfieWithId ? 1 : 0) + fileCount;
+      if (totalItems === 0) {
+        showNotification('error', 'No Files', 'Please take a selfie with ID and upload required documents.');
         return;
       }
 
-      console.log(`Uploading ${fileCount} files...`);
+      console.log(`Uploading ${totalItems} items (${formData.selfieWithId ? '1 selfie + ' : ''}${fileCount} files)...`);
 
       const response = await fetch('/api/proxy/merchant/registration/documents', {
         method: 'POST',
@@ -644,7 +678,7 @@ const MerchantSignup = () => {
                formData.latitude !== 0 && formData.longitude !== 0;
       case 2: // Documents
         const requiredDocs = getRequiredDocuments().filter(doc => doc.required);
-        return requiredDocs.every(doc => formData.documents[doc.key]);
+        return formData.selfieWithId && requiredDocs.every(doc => formData.documents[doc.key]);
       default:
         return true;
     }
@@ -1123,20 +1157,6 @@ const MerchantSignup = () => {
       case 2: // Documents
         const requiredDocs = getRequiredDocuments();
         
-        if (requiredDocs.length === 0) {
-          return (
-            <div className="text-center py-12">
-              <svg className="w-16 h-16 text-green-500 mx-auto mb-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <h3 className="text-xl font-medium text-gray-900 mb-2">No Documents Required</h3>
-              <p className="text-gray-600">
-                No documents are required for unregistered businesses. You can proceed to the next step.
-              </p>
-            </div>
-          );
-        }
-
         return (
           <div className="space-y-8">
             {/* Header Section */}
@@ -1153,11 +1173,20 @@ const MerchantSignup = () => {
                   <h3 className="text-lg font-semibold text-orange-900 mb-2">Document Requirements</h3>
                   <p className="text-orange-700 text-sm leading-relaxed">
                     Based on your business registration type (<strong>{businessRegistrationOptions.find(opt => opt.value === formData.businessRegistration)?.label}</strong>), 
-                    please upload the following documents. All files must be clear, readable, and under 2MB in size.
+                    please take a selfie with your ID and upload the required documents. All files must be clear, readable, and under 2MB in size.
                   </p>
                 </div>
               </div>
             </div>
+
+            {/* Selfie with ID - Camera Capture (Required for all types) */}
+            <CameraCapture
+              label="Selfie with ID"
+              value={formData.selfieWithId}
+              onChange={(imageData) => setFormData(prev => ({ ...prev, selfieWithId: imageData }))}
+              required={true}
+              helperText="Take a selfie while holding your valid ID next to your face. This is required for all business types."
+            />
 
             {/* Document Upload Forms */}
             <div className="space-y-6">
@@ -1213,6 +1242,7 @@ const MerchantSignup = () => {
                         <li>• Maximum 2MB per file</li>
                         <li>• Clear and readable quality</li>
                         <li>• Complete document visible</li>
+                        <li>• Selfie: Hold ID next to your face</li>
                       </ul>
                     </div>
                   </div>
@@ -1232,11 +1262,20 @@ const MerchantSignup = () => {
                   <div>
                     <p className="text-sm font-medium text-gray-900">Upload Progress</p>
                     <p className="text-xs text-gray-500">
-                      {Object.values(formData.documents).filter(Boolean).length} of {requiredDocs.length} documents uploaded
+                      {/* Updated to include selfie in progress count */}
+                      {(formData.selfieWithId ? 1 : 0) + Object.values(formData.documents).filter(Boolean).length} of {1 + requiredDocs.length} items completed
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
+                  {/* Selfie indicator */}
+                  <div
+                    className={`w-3 h-3 rounded-full transition-colors duration-200 ${
+                      formData.selfieWithId ? 'bg-green-500' : 'bg-red-200'
+                    }`}
+                    title={`Selfie with ID - ${formData.selfieWithId ? 'Taken' : 'Required'}`}
+                  />
+                  {/* Document indicators */}
                   {requiredDocs.map((doc) => (
                     <div
                       key={doc.key}

@@ -7,6 +7,8 @@ import { merchantService } from '../../../services/merchantService';
 import { Merchant } from '../../../types/merchant';
 import { useAdminAuth } from '../../../lib/auth/hooks/useAdminAuth';
 import { AdminAuthGuard } from '../../../lib/auth/guards/AdminAuthGuard';
+import { AdminUser } from '@/lib/auth';
+
 
 const MerchantDetail = () => {
   const [user, setUser] = useState<AdminUser | null>(null);

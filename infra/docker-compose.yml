@@ -77,7 +77,7 @@ services:
       - NODE_OPTIONS=--max-old-space-size=4096
       - BACKEND_URL=http://backend:8000
       - NEXT_PUBLIC_RELOAD_WS_URL=http://localhost:4000/reload
-      - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-YOUR_GOOGLE_MAPS_API_KEY}
+      - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-AIzaSyDIRIKuP7sSpx3HCIv82UPPSS6PEdCAxXw}
     depends_on:
       - backend
 

@@ -176,8 +176,8 @@ class MerchantRegistrationStep2Serializer(serializers.Serializer):
     barangay = serializers.CharField(max_length=100)
     street_name = serializers.CharField(max_length=200)
     house_number = serializers.CharField(max_length=50)
-    latitude = serializers.DecimalField(max_digits=10, decimal_places=8, required=False, allow_null=True)
-    longitude = serializers.DecimalField(max_digits=11, decimal_places=8, required=False, allow_null=True)
+    latitude = serializers.DecimalField(max_digits=25, decimal_places=20, required=False, allow_null=True)
+    longitude = serializers.DecimalField(max_digits=25, decimal_places=20, required=False, allow_null=True)
 
 
 class MerchantRegistrationStep3Serializer(serializers.Serializer):
