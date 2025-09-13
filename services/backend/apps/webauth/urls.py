@@ -5,7 +5,8 @@ from .views import (
     ForgotPasswordView, VerifyPasswordResetOTPView, ResetPasswordView, 
     UpdateMerchantLocationView, UploadDocumentView, BusinessCategoryListView, BusinessTypeListView,
     CheckUsernameView, CheckEmailView, MerchantRegistrationStepView, 
-    MerchantFinalRegistrationView, MerchantRegistrationSessionStatusView, MerchantTokenVerificationView
+    MerchantFinalRegistrationView, MerchantRegistrationSessionStatusView, MerchantTokenVerificationView,
+    GoogleOAuthAdminLoginView, GoogleOAuthMerchantLoginView
 )
 
 urlpatterns = [
@@ -14,6 +15,10 @@ urlpatterns = [
     path('auth/merchant/login/', MerchantLoginView.as_view(), name='merchant-login'),
     path('auth/merchant/verify-token/', MerchantTokenVerificationView.as_view(), name='merchant-verify-token'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
+    
+    # Google OAuth Authentication
+    path('auth/admin/google/', GoogleOAuthAdminLoginView.as_view(), name='admin-google-login'),
+    path('auth/merchant/google/', GoogleOAuthMerchantLoginView.as_view(), name='merchant-google-login'),
     
     # Legacy Merchant Registration (kept for backward compatibility)
     path('auth/merchant/signup/', MerchantSignupView.as_view(), name='merchant-signup'),

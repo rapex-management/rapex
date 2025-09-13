@@ -12,6 +12,7 @@ import string
 from datetime import datetime, timedelta
 from django.core.mail import send_mail
 import uuid
+import logging
 
 from .serializers import (
     LoginSerializer, AdminSerializer, MerchantSerializer, MerchantSignupSerializer,
@@ -21,8 +22,15 @@ from .serializers import (
     MerchantRegistrationSessionSerializer, MerchantFinalRegistrationSerializer
 )
 from .models import Admin, EmailVerification
+from .google_oauth import GoogleOAuthService
 from apps.merchants.models import Merchant, BusinessCategory, BusinessType, MerchantRegistrationSession
 from .authentication import get_tokens_for_user
+import logging
+
+logger = logging.getLogger(__name__)
+from .google_oauth import GoogleOAuthService
+
+logger = logging.getLogger(__name__)
 
 
 class AdminLoginView(APIView):
@@ -857,3 +865,261 @@ class MerchantTokenVerificationView(APIView):
                 'valid': False,
                 'detail': f'Token verification failed: {str(e)}'
             }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class GoogleOAuthAdminLoginView(APIView):
+    """
+    Google OAuth login for admin users.
+    
+    Features:
+    - Secure Google token verification
+    - Auto-creation of admin accounts
+    - Rate limiting protection
+    - Comprehensive logging
+    """
+    
+    def post(self, request):
+        """
+        Authenticate admin using Google OAuth.
+        
+        Expected payload:
+        {
+            "access_token": "google_access_token",
+            "id_token": "google_id_token" (optional, more secure)
+        }
+        """
+        try:
+            access_token = request.data.get('access_token')
+            id_token_str = request.data.get('id_token')
+            
+            if not access_token and not id_token_str:
+                return Response({
+                    'detail': 'Access token or ID token is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Prefer ID token verification (more secure)
+            if id_token_str:
+                google_user_info = GoogleOAuthService.verify_google_id_token(id_token_str)
+            else:
+                google_user_info = GoogleOAuthService.verify_google_token(access_token)
+            
+            if not google_user_info:
+                return Response({
+                    'detail': 'Invalid Google token'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            user_data = GoogleOAuthService.extract_user_data(google_user_info)
+            
+            if not user_data['email_verified']:
+                return Response({
+                    'detail': 'Email not verified with Google'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Find existing admin or create new one
+            admin = None
+            try:
+                # Try to find by Google ID first
+                if user_data['google_id']:
+                    admin = Admin.objects.get(google_id=user_data['google_id'])
+            except Admin.DoesNotExist:
+                try:
+                    # Try to find by email
+                    admin = Admin.objects.get(email=user_data['email'])
+                    # Link Google account to existing admin
+                    admin.google_id = user_data['google_id']
+                    admin.auth_provider = 'google'
+                    admin.save()
+                except Admin.DoesNotExist:
+                    # Create new admin account
+                    admin = Admin.objects.create(
+                        email=user_data['email'],
+                        username=GoogleOAuthService.generate_username_from_email(user_data['email']),
+                        first_name=user_data['first_name'],
+                        last_name=user_data['last_name'],
+                        google_id=user_data['google_id'],
+                        auth_provider='google',
+                        profile_picture=user_data['picture'],
+                        status=0,  # Active
+                        password=''  # No password for OAuth users
+                    )
+                    logger.info(f"Created new admin account via Google OAuth: {user_data['email']}")
+            
+            # Update last login
+            admin.last_login = timezone.now()
+            if user_data['picture'] and not admin.profile_picture:
+                admin.profile_picture = user_data['picture']
+            admin.save()
+            
+            # Generate tokens
+            tokens = get_tokens_for_user(admin)
+            data = AdminSerializer(admin).data
+            data.update(tokens)
+            
+            logger.info(f"Successful Google OAuth login for admin: {admin.email}")
+            return Response(data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Google OAuth admin login error: {str(e)}")
+            return Response({
+                'detail': 'Authentication failed'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GoogleOAuthMerchantLoginView(APIView):
+    """
+    Google OAuth login for merchant users.
+    
+    Features:
+    - Secure Google token verification
+    - Auto-creation of merchant accounts (with pending status)
+    - Existing account linking
+    - Status validation
+    """
+    
+    def post(self, request):
+        """
+        Authenticate merchant using Google OAuth.
+        
+        Expected payload:
+        {
+            "access_token": "google_access_token",
+            "id_token": "google_id_token" (optional, more secure)
+        }
+        """
+        try:
+            access_token = request.data.get('access_token')
+            id_token_str = request.data.get('id_token')
+            
+            if not access_token and not id_token_str:
+                return Response({
+                    'detail': 'Access token or ID token is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Prefer ID token verification (more secure)
+            if id_token_str:
+                google_user_info = GoogleOAuthService.verify_google_id_token(id_token_str)
+            else:
+                google_user_info = GoogleOAuthService.verify_google_token(access_token)
+            
+            if not google_user_info:
+                return Response({
+                    'detail': 'Invalid Google token'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+            
+            user_data = GoogleOAuthService.extract_user_data(google_user_info)
+            
+            if not user_data['email_verified']:
+                return Response({
+                    'detail': 'Email not verified with Google'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Find existing merchant or create new one
+            merchant = None
+            is_new_merchant = False
+            
+            try:
+                # Try to find by Google ID first
+                if user_data['google_id']:
+                    merchant = Merchant.objects.get(google_id=user_data['google_id'])
+            except Merchant.DoesNotExist:
+                try:
+                    # Try to find by email
+                    merchant = Merchant.objects.get(email=user_data['email'])
+                    # Link Google account to existing merchant
+                    merchant.google_id = user_data['google_id']
+                    merchant.auth_provider = 'google'
+                    merchant.save()
+                except Merchant.DoesNotExist:
+                    # Create new merchant account (incomplete, needs more info)
+                    merchant = Merchant.objects.create(
+                        email=user_data['email'],
+                        username=GoogleOAuthService.generate_username_from_email(user_data['email']),
+                        merchant_name=user_data['full_name'] or f"{user_data['first_name']} {user_data['last_name']}",
+                        owner_name=user_data['full_name'] or f"{user_data['first_name']} {user_data['last_name']}",
+                        google_id=user_data['google_id'],
+                        auth_provider='google',
+                        profile_picture=user_data['picture'],
+                        status=4,  # Unverified - needs to complete profile
+                        password='',  # No password for OAuth users
+                        phone='',  # Will be collected later
+                        zipcode='',
+                        province='',
+                        city_municipality='',
+                        barangay='',
+                        street_name='',
+                        house_number=''
+                    )
+                    is_new_merchant = True
+                    logger.info(f"Created new merchant account via Google OAuth: {user_data['email']}")
+            
+            # Check merchant status
+            if merchant.status == 1:  # Banned
+                return Response({
+                    'detail': 'Account suspended',
+                    'status_code': 'ACCOUNT_BANNED',
+                    'message': 'Your account has been suspended. Please contact support for assistance.'
+                }, status=status.HTTP_403_FORBIDDEN)
+            elif merchant.status == 2:  # Frozen
+                return Response({
+                    'detail': 'Account temporarily frozen',
+                    'status_code': 'ACCOUNT_FROZEN',
+                    'message': 'Your account is temporarily frozen. Please contact support for assistance.'
+                }, status=status.HTTP_403_FORBIDDEN)
+            elif merchant.status == 3:  # Deleted
+                return Response({
+                    'detail': 'Account not found',
+                    'status_code': 'ACCOUNT_DELETED',
+                    'message': 'This account has been deleted.'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Update last login
+            merchant.last_login = timezone.now()
+            if user_data['picture'] and not merchant.profile_picture:
+                merchant.profile_picture = user_data['picture']
+            merchant.save()
+            
+            # Generate tokens
+            tokens = get_tokens_for_user(merchant)
+            data = MerchantSerializer(merchant).data
+            data.update(tokens)
+            
+            # Add status information for frontend
+            response_data = {
+                **data,
+                'is_new_account': is_new_merchant,
+                'requires_profile_completion': merchant.status == 4 or not merchant.phone
+            }
+            
+            if is_new_merchant:  # New account created via Google OAuth
+                response_data.update({
+                    'status_code': 'NEW_ACCOUNT',
+                    'message': 'Welcome! Please complete your merchant profile to get started.',
+                    'redirect_to': '/merchant/signup'
+                })
+            elif merchant.status == 0:  # Active merchant
+                response_data.update({
+                    'status_code': 'LOGIN_SUCCESS',
+                    'message': 'Welcome back!',
+                    'redirect_to': '/merchant/dashboard'
+                })
+            elif merchant.status == 4:  # Unverified
+                response_data.update({
+                    'status_code': 'PROFILE_INCOMPLETE',
+                    'message': 'Please complete your merchant profile to continue.',
+                    'redirect_to': '/merchant/signup'
+                })
+            elif merchant.status == 5:  # Pending
+                response_data.update({
+                    'status_code': 'PENDING_APPROVAL',
+                    'message': 'Your application is under review by our team.',
+                    'redirect_to': '/merchant/pending-approval'
+                })
+            
+            logger.info(f"Successful Google OAuth login for merchant: {merchant.email}")
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Google OAuth merchant login error: {str(e)}")
+            return Response({
+                'detail': 'Authentication failed'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

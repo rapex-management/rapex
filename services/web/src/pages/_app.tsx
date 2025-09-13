@@ -2,6 +2,9 @@ import type { AppProps } from 'next/app'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect } from 'react'
+import AuthProvider from '../components/providers/AuthProvider'
+import { PerformanceMonitor } from '../components/monitoring/PerformanceMonitor'
+import { preloadCriticalResources } from '../utils/performanceOptimizations'
 import '../styles/globals.css'
 // Import dev nonce to ensure dev rebuild triggers affect the client bundle
 import { nonce } from '../dev/nonce'
@@ -9,7 +12,7 @@ import { nonce } from '../dev/nonce'
 // Performance monitoring
 declare global {
   interface Window {
-  gtag?: (...args: unknown[]) => void
+    gtag?: (...args: unknown[]) => void
   }
 }
 
@@ -92,14 +95,30 @@ export default function App({ Component, pageProps }: AppProps) {
     }
   }, [])
 
+  // Preload critical resources on app start
+  useEffect(() => {
+    preloadCriticalResources();
+  }, []);
+
   return (
-    <>
+    <AuthProvider session={pageProps.session}>
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#ff6b35" />
+        <meta name="theme-color" content="#f97316" />
         <link rel="icon" href="/favicon.ico" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <meta name="description" content="RAPEX - Advanced e-commerce platform for merchants" />
       </Head>
+      
+      {/* Performance monitoring in development and production */}
+      <PerformanceMonitor 
+        enableTracking={true}
+        enableLogging={process.env.NODE_ENV === 'development'}
+        enableReporting={process.env.NODE_ENV === 'production'}
+      />
+      
       <Component {...pageProps} />
-    </>
+    </AuthProvider>
   )
 }

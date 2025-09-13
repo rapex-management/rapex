@@ -19,4 +19,5 @@ urlpatterns = [
     path('api/', include('apps.webauth.urls')),
     path('api/merchants/', include('apps.merchants.urls')),
     path('api/products/', include('apps.products.urls')),
+    path('api/wallets/', include('apps.wallets.urls')),
 ]

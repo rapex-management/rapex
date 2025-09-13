@@ -36,6 +36,7 @@ INSTALLED_APPS = [
 	'apps.webauth.apps.WebauthConfig',
 	'apps.merchants.apps.MerchantsConfig',
 	'apps.products.apps.ProductsConfig',
+    'apps.wallets.apps.WalletsConfig',
 ]
 
 MIDDLEWARE = [
@@ -61,10 +62,45 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'rapex_main.wsgi.application'
 
-# Database: use DATABASE_URL from .env (env.db returns dict with ENGINE/NAME/etc)
-DATABASES = {
-	'default': env.db('DATABASE_URL', default='postgres://rapex:rapex_pass@db:5432/rapex')
-}
+# Database configuration with resilient fallback
+from urllib.parse import urlparse, parse_qsl, urlunparse
+
+_raw_db_url = env('DATABASE_URL', default='postgres://rapex:rapex_pass@db:5432/rapex')
+_db_config = None
+
+def _sanitize_db_url(url: str) -> str:
+    """Remove unsupported query parameters that psycopg2 will reject (e.g., MAX_CONNS)."""
+    try:
+        parsed = urlparse(url)
+        if not parsed.query:
+            return url
+        allowed = {  # Common allowed keys for psycopg2 / Django URL parser
+            'sslmode', 'connect_timeout', 'options', 'target_session_attrs'
+        }
+        filtered = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k.lower() in allowed]
+        new_query = '&'.join(f"{k}={v}" for k, v in filtered)
+        sanitized = urlunparse(parsed._replace(query=new_query))
+        return sanitized
+    except Exception:
+        return url
+
+_raw_db_url = _sanitize_db_url(_raw_db_url)
+
+try:
+    # Try standard dj-database-url style parsing via environ
+    _db_config = env.db('DATABASE_URL', default=_raw_db_url)
+except Exception:
+    # Fallback to discrete variables (works even if DATABASE_URL malformed with extraneous params)
+    _db_config = {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': env('DB_NAME', default='rapex'),
+        'USER': env('DB_USER', default='rapex'),
+        'PASSWORD': env('DB_PASSWORD', default='rapex_pass'),
+        'HOST': env('DB_HOST', default='db'),
+        'PORT': env('DB_PORT', default='5432'),
+    }
+
+DATABASES = { 'default': _db_config }
 
 # Redis Cache Configuration
 CACHES = {
@@ -160,4 +196,8 @@ CORS_ALLOW_CREDENTIALS = True
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 USE_TZ = True
+
+# Google OAuth Settings
+GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
+GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')
 

@@ -60,6 +60,10 @@ class Admin(BaseUser):
     otp_code = models.CharField(max_length=6, null=True, blank=True)
     otp_expires_at = models.DateTimeField(null=True, blank=True)
     date_joined = models.DateTimeField(auto_now_add=True)
+    
+    # Google OAuth fields
+    google_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    auth_provider = models.CharField(max_length=20, choices=[('email', 'Email'), ('google', 'Google')], default='email')
 
 
 class Rider(BaseUser):
@@ -78,6 +82,10 @@ class User(BaseUser):
     status = models.IntegerField(choices=[(0, 'Active'), (1, 'Banned'), (2, 'Frozen'), (3, 'Deleted'), (4, 'Unverified')], default=4)
     profile_picture = models.URLField(blank=True)
     date_joined = models.DateTimeField(auto_now_add=True)
+    
+    # Google OAuth fields
+    google_id = models.CharField(max_length=100, unique=True, null=True, blank=True)
+    auth_provider = models.CharField(max_length=20, choices=[('email', 'Email'), ('google', 'Google')], default='email')
 
 
 class EmailVerification(models.Model):
