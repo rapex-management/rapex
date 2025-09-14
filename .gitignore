@@ -137,5 +137,3 @@ dmypy.json
 *.temp
 tmp/
 temp/
-.env
-.env
