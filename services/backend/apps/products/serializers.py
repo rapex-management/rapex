@@ -1,9 +1,31 @@
 from rest_framework import serializers
 from .models import (
-    Product, ProductType, Category, Brand, Shop, 
+    ShopProduct, PrelovedProduct, ReadyToEatProduct, FreshProduct,
+    MerchantCategory, Category, Brand, 
     ProductImage, ProductVariant, ProductTag, ProductReview
 )
 from apps.merchants.models import Merchant
+
+# Temporary compatibility - for migration purposes only
+Product = ShopProduct  # Default to ShopProduct for now
+Shop = Merchant  # Shop is now just Merchant
+
+# Create a temporary ProductType class for compatibility
+class ProductType:
+    TYPE_CHOICES = [
+        (0, 'Shop'),
+        (1, 'Pre-loved'), 
+        (2, 'Ready-to-Eat'),
+        (3, 'Fresh'),
+    ]
+    
+    class objects:
+        @staticmethod
+        def all():
+            return []
+    
+    def get_name_display(self):
+        return "Shop"
 
 
 class ProductTypeSerializer(serializers.ModelSerializer):

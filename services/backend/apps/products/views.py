@@ -8,9 +8,32 @@ from rest_framework.pagination import PageNumberPagination
 from django.core.exceptions import ValidationError
 
 from .models import (
-    Product, ProductType, Category, Brand, Shop, 
+    ShopProduct, PrelovedProduct, ReadyToEatProduct, FreshProduct,
+    MerchantCategory, Category, Brand, 
     ProductImage, ProductVariant, ProductTag, ProductReview
 )
+
+# Temporary compatibility - for migration purposes only
+# TODO: Update all views to use specific product types
+Product = ShopProduct  # Default to ShopProduct for now
+from apps.merchants.models import Merchant as Shop  # Temporary alias
+
+# Create a temporary ProductType class for compatibility
+class ProductType:
+    TYPE_CHOICES = [
+        (0, 'Shop'),
+        (1, 'Pre-loved'), 
+        (2, 'Ready-to-Eat'),
+        (3, 'Fresh'),
+    ]
+    
+    class objects:
+        @staticmethod
+        def all():
+            return []
+    
+    def get_name_display(self):
+        return "Shop"
 from .serializers import (
     ProductListSerializer, ProductDetailSerializer, ProductCreateUpdateSerializer,
     ProductTypeSerializer, CategorySerializer, BrandSerializer, ShopSerializer,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo } from 'react';
+import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 
@@ -156,6 +156,44 @@ export const Sidebar: React.FC<SidebarProps> = memo(({ items, userInfo, onLogout
   const [isCollapsed, setIsCollapsed] = useState(false);
   const router = useRouter();
 
+  // Auto-expand parent items when child routes are active
+  const findActiveParents = useCallback((items: SidebarItem[], currentPath: string): string[] => {
+    const activeParents: string[] = [];
+    
+    const checkItem = (item: SidebarItem) => {
+      if (item.children && item.children.length > 0) {
+        const hasActiveChild = item.children.some(child => {
+          // Use exact match for leaf items when checking if parent should be expanded
+          if (child.href && currentPath === child.href) {
+            return true;
+          }
+          if (child.children) {
+            return checkItem(child);
+          }
+          return false;
+        });
+        
+        if (hasActiveChild) {
+          activeParents.push(item.id);
+          return true;
+        }
+      }
+      return false;
+    };
+    
+    items.forEach(checkItem);
+    return activeParents;
+  }, []);
+
+  // Update expanded items when route changes
+  useEffect(() => {
+    const activeParents = findActiveParents(items, router.asPath);
+    setExpandedItems(prev => {
+      const newExpanded = [...new Set([...prev, ...activeParents])];
+      return newExpanded;
+    });
+  }, [router.asPath, items, findActiveParents]);
+
   // Memoized callbacks for better performance
   const toggleExpanded = useCallback((itemId: string) => {
     setExpandedItems(prev => 
@@ -173,10 +211,27 @@ export const Sidebar: React.FC<SidebarProps> = memo(({ items, userInfo, onLogout
     onLogout();
   }, [onLogout]);
 
-  // Memoized active route checker
-  const isActiveRoute = useCallback((href: string) => {
-    return router.asPath === href || router.asPath.startsWith(href + '/');
+  // Memoized active route checker - exact match for leaf items, prefix match for parents
+  const isActiveRoute = useCallback((href: string, isParentItem: boolean = false) => {
+    if (isParentItem) {
+      // For parent items, check if current route starts with parent path
+      return router.asPath.startsWith(href);
+    } else {
+      // For leaf items, exact match only
+      return router.asPath === href;
+    }
   }, [router.asPath]);
+
+  // Check if any child of an item is active (for parent highlighting)
+  const hasActiveChild = useCallback((item: SidebarItem): boolean => {
+    if (!item.children) return false;
+    
+    return item.children.some(child => {
+      if (child.href && isActiveRoute(child.href, false)) return true;
+      if (child.children) return hasActiveChild(child);
+      return false;
+    });
+  }, [isActiveRoute]);
 
   // Memoized user initials
   const userInitials = useMemo(() => {
@@ -187,11 +242,12 @@ export const Sidebar: React.FC<SidebarProps> = memo(({ items, userInfo, onLogout
   const renderSidebarItem = useCallback((item: SidebarItem, level: number = 0) => {
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedItems.includes(item.id);
-    const isActive = item.href && isActiveRoute(item.href);
+    const isActive = item.href && isActiveRoute(item.href, false); // Exact match for leaf items
+    const isParentActive = hasChildren && hasActiveChild(item); // Parent highlighting
 
     const itemClasses = `
       sidebar-item transition-all duration-200 ease-in-out
-      ${isActive ? 'active bg-gradient-primary-soft text-white shadow-md transform scale-[1.02]' : 'hover:bg-gray-50 hover:transform hover:scale-[1.01]'} 
+      ${isActive || isParentActive ? 'active bg-gradient-primary-soft text-white shadow-md transform scale-[1.02]' : 'hover:bg-gray-50 hover:transform hover:scale-[1.01]'} 
       ${level > 0 ? 'ml-4 pl-4 border-l border-gray-200' : ''}
       ${hasChildren ? 'cursor-pointer' : ''}
       flex items-center px-3 py-2 rounded-lg group
@@ -199,12 +255,12 @@ export const Sidebar: React.FC<SidebarProps> = memo(({ items, userInfo, onLogout
 
     const iconClasses = `
       flex-shrink-0 transition-colors duration-200
-      ${isActive ? 'text-white' : 'text-gray-500 group-hover:text-gray-700'}
+      ${isActive || isParentActive ? 'text-white' : 'text-gray-500 group-hover:text-gray-700'}
     `.trim();
 
     const labelClasses = `
       ml-3 flex-1 font-medium transition-colors duration-200
-      ${isActive ? 'text-white' : 'text-gray-700'}
+      ${isActive || isParentActive ? 'text-white' : 'text-gray-700'}
     `.trim();
 
     return (
@@ -251,7 +307,7 @@ export const Sidebar: React.FC<SidebarProps> = memo(({ items, userInfo, onLogout
         )}
       </div>
     );
-  }, [expandedItems, isCollapsed, isActiveRoute, toggleExpanded]);
+  }, [expandedItems, isCollapsed, isActiveRoute, hasActiveChild, toggleExpanded]);
 
   // Memoized sidebar container classes
   const sidebarClasses = useMemo(() => `
