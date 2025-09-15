@@ -36,6 +36,7 @@ class ProductType:
         return "Shop"
 from .serializers import (
     ProductListSerializer, ProductDetailSerializer, ProductCreateUpdateSerializer,
+    ShopProductCreateUpdateSerializer,
     ProductTypeSerializer, CategorySerializer, BrandSerializer, ShopSerializer,
     ProductImageSerializer, ProductVariantSerializer, ProductTagSerializer
 )
@@ -579,3 +580,146 @@ def download_csv_template(request):
     ])
     
     return response
+
+
+# ShopProduct Specific Views
+class ShopProductListCreateView(generics.ListCreateAPIView):
+    """List and create shop products for the authenticated merchant"""
+    permission_classes = [IsAuthenticated, IsMerchant]
+    pagination_class = ProductPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description', 'sku']
+    ordering_fields = ['name', 'price', 'stock', 'created_at', 'updated_at']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Only return shop products belonging to the authenticated merchant"""
+        merchant = self.request.user
+        return ShopProduct.objects.filter(merchant=merchant).select_related(
+            'category', 'brand'
+        ).order_by('-created_at')
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ShopProductCreateUpdateSerializer
+        return ProductListSerializer
+    
+    def perform_create(self, serializer):
+        """Create a shop product for the authenticated merchant"""
+        serializer.save()
+
+
+class ShopProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Retrieve, update, or delete a specific shop product"""
+    permission_classes = [IsAuthenticated, IsMerchant]
+    serializer_class = ShopProductCreateUpdateSerializer
+    lookup_field = 'product_id'
+    
+    def get_queryset(self):
+        """Only allow access to products belonging to the authenticated merchant"""
+        merchant = self.request.user
+        return ShopProduct.objects.filter(merchant=merchant).select_related(
+            'category', 'brand'
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsMerchant])
+def shop_product_categories(request):
+    """Get merchant categories for the dropdown"""
+    try:
+        merchant = request.user
+        categories = MerchantCategory.objects.filter(
+            merchant=merchant
+        ).order_by('name')
+        
+        category_data = [
+            {
+                'category_id': cat.category_id,
+                'name': cat.name,
+                'description': cat.description
+            }
+            for cat in categories
+        ]
+        
+        return Response({
+            'categories': category_data,
+            'count': len(category_data)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error fetching categories: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def shop_product_brands(request):
+    """Get all brands for the dropdown"""
+    try:
+        brands = Brand.objects.all().order_by('name')
+        
+        brand_data = [
+            {
+                'brand_id': brand.brand_id,
+                'name': brand.name,
+                'description': brand.description
+            }
+            for brand in brands
+        ]
+        
+        return Response({
+            'brands': brand_data,
+            'count': len(brand_data)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error fetching brands: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsMerchant])
+def create_merchant_category(request):
+    """Create a new merchant category"""
+    try:
+        merchant = request.user
+        name = request.data.get('name', '').strip()
+        description = request.data.get('description', '').strip()
+        
+        if not name:
+            return Response(
+                {'error': 'Category name is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if category already exists for this merchant
+        if MerchantCategory.objects.filter(merchant=merchant, name=name).exists():
+            return Response(
+                {'error': 'Category with this name already exists'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create the category
+        category = MerchantCategory.objects.create(
+            merchant=merchant,
+            name=name,
+            description=description
+        )
+        
+        return Response({
+            'category_id': category.category_id,
+            'name': category.name,
+            'description': category.description,
+            'message': 'Category created successfully'
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error creating category: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

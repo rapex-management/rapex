@@ -171,8 +171,66 @@ class ProductDetailSerializer(serializers.ModelSerializer):
         return 0
 
 
+# ShopProduct Serializers
+class ShopProductCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating shop products"""
+    images = serializers.ListField(
+        child=serializers.URLField(),
+        required=False,
+        help_text="List of image URLs"
+    )
+    dimensions = serializers.JSONField(required=False, default=dict)
+    
+    class Meta:
+        model = ShopProduct
+        fields = [
+            'product_id', 'name', 'description', 'price', 'stock', 
+            'category', 'brand', 'status', 'sku', 'weight', 
+            'dimensions', 'images'
+        ]
+        read_only_fields = ['product_id', 'markup_price', 'created_at', 'updated_at']
+    
+    def validate_price(self, value):
+        """Validate that price is positive"""
+        if value <= 0:
+            raise serializers.ValidationError("Price must be greater than 0")
+        return value
+    
+    def validate_stock(self, value):
+        """Validate that stock is non-negative"""
+        if value < 0:
+            raise serializers.ValidationError("Stock cannot be negative")
+        return value
+    
+    def validate_dimensions(self, value):
+        """Validate dimensions format if provided"""
+        if value:
+            required_keys = ['length', 'width', 'height']
+            for key in required_keys:
+                if key not in value:
+                    raise serializers.ValidationError(f"Dimensions must include {key}")
+                if not isinstance(value[key], (int, float)) or value[key] <= 0:
+                    raise serializers.ValidationError(f"{key} must be a positive number")
+        return value
+    
+    def create(self, validated_data):
+        """Create a new shop product"""
+        # Set the merchant from the request context
+        merchant = self.context['request'].user
+        validated_data['merchant'] = merchant
+        
+        return ShopProduct.objects.create(**validated_data)
+    
+    def update(self, instance, validated_data):
+        """Update an existing shop product"""
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+
+
 class ProductCreateUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for creating and updating products"""
+    """Serializer for creating and updating products (legacy compatibility)"""
     images = ProductImageSerializer(many=True, required=False)
     variants = ProductVariantSerializer(many=True, required=False)
     tags = ProductTagSerializer(many=True, required=False)

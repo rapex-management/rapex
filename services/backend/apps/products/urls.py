@@ -4,9 +4,18 @@ from . import views
 app_name = 'products'
 
 urlpatterns = [
-    # Product management
+    # Product management (legacy)
     path('', views.ProductListCreateView.as_view(), name='product-list-create'),
     path('<uuid:product_id>/', views.ProductDetailView.as_view(), name='product-detail'),
+    
+    # ShopProduct management (new)
+    path('shop-products/', views.ShopProductListCreateView.as_view(), name='shop-product-list-create'),
+    path('shop-products/<uuid:product_id>/', views.ShopProductDetailView.as_view(), name='shop-product-detail'),
+    
+    # ShopProduct supporting data
+    path('shop-products/categories/', views.shop_product_categories, name='shop-product-categories'),
+    path('shop-products/categories/create/', views.create_merchant_category, name='create-merchant-category'),
+    path('shop-products/brands/', views.shop_product_brands, name='shop-product-brands'),
     
     # Product images
     path('<uuid:product_id>/images/', views.ProductImageListCreateView.as_view(), name='product-images'),
@@ -16,7 +25,7 @@ urlpatterns = [
     path('<uuid:product_id>/variants/', views.ProductVariantListCreateView.as_view(), name='product-variants'),
     path('variants/<uuid:variant_id>/', views.ProductVariantDetailView.as_view(), name='product-variant-detail'),
     
-    # Supporting data
+    # Supporting data (legacy)
     path('types/', views.ProductTypeListView.as_view(), name='product-types'),
     path('categories/', views.CategoryListView.as_view(), name='categories'),
     path('brands/', views.BrandListView.as_view(), name='brands'),

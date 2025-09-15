@@ -250,13 +250,13 @@ const ProductsPage = memo(() => {
                       Bulk Upload
                     </Link>
                     <Link
-                      href="/merchant/products/add"
+                      href="/merchant/products/add-shop-product"
                       className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors inline-flex items-center"
                     >
                       <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                       </svg>
-                      Add New Product
+                      Add Shop Product
                     </Link>
                   </div>
                 </div>
@@ -403,7 +403,7 @@ const ProductsPage = memo(() => {
                       <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
                       <p className="text-gray-500 mb-6">Get started by adding your first product.</p>
                       <Link
-                        href="/merchant/products/add"
+                        href="/merchant/products/add-shop-product"
                         className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                       >
                         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

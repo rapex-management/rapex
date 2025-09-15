@@ -54,8 +54,8 @@ const dashboardStats = [
 const quickActionsConfig = [
   {
     title: "Add Product",
-    description: "Add new products to your store",
-    href: "/merchant/products/add",
+    description: "Add new shop products to your store",
+    href: "/merchant/products/add-shop-product",
     color: "orange" as const,
     icon: (
       <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
