@@ -272,7 +272,7 @@ const ProductsPage: React.FC = () => {
   }, [selectedProducts.size, products]);
 
   // Utility functions
-  const formatPrice = (price: number) => `₦${price.toLocaleString()}`;
+  const formatPrice = (price: number) => `₱${price.toLocaleString()}`;
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
   
   const getStatusBadge = (status: string) => {
