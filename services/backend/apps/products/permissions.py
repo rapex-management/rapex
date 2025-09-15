@@ -24,8 +24,8 @@ class IsProductOwner(BasePermission):
         # Check if the user is a merchant and owns the product
         return (
             isinstance(request.user, Merchant) and
-            hasattr(obj, 'shop') and
-            obj.shop.merchant == request.user
+            hasattr(obj, 'merchant') and
+            obj.merchant == request.user
         )
 
 

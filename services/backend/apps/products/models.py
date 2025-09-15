@@ -90,7 +90,7 @@ class BaseProduct(models.Model):
     description = models.TextField(null=True, blank=True)
     sku = models.CharField(max_length=100, null=True, blank=True)
     category = models.ForeignKey(MerchantCategory, on_delete=models.PROTECT, null=True, blank=True, related_name='%(class)s_products')
-    brand = models.ForeignKey(Brand, on_delete=models.PROTECT, null=True, blank=True, related_name='%(class)s_products')
+    brand = models.ForeignKey('MerchantBrand', on_delete=models.PROTECT, null=True, blank=True, related_name='%(class)s_products')
     weight = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True, help_text="Weight in kg")
     dimensions = models.JSONField(default=dict, blank=True, help_text="Length, width, height in cm")
     images = models.JSONField(default=list, null=True, blank=True, help_text="Array of image URLs")
@@ -317,3 +317,19 @@ class ProductReview(models.Model):
     
     def __str__(self):
         return f"Review for {self.product.name} - {self.rating} stars"
+
+
+class MerchantBrand(models.Model):
+    """Merchant-specific product brands - simplified structure"""
+    brand_id = models.AutoField(primary_key=True)
+    merchant = models.ForeignKey(Merchant, on_delete=models.CASCADE, related_name='merchant_brands')
+    brand_name = models.CharField(max_length=100)
+    
+    class Meta:
+        db_table = 'merchant_brands'
+        verbose_name = 'Merchant Brand'
+        verbose_name_plural = 'Merchant Brands'
+        unique_together = ['merchant', 'brand_name']
+    
+    def __str__(self):
+        return f"{self.merchant.merchant_name} - {self.brand_name}"

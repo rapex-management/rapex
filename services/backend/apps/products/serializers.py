@@ -54,13 +54,21 @@ class BrandSerializer(serializers.ModelSerializer):
         fields = ['brand_id', 'name', 'description', 'created_at']
 
 
+class MerchantBrandSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import MerchantBrand
+        model = MerchantBrand
+        fields = ['brand_id', 'brand_name', 'merchant']
+        read_only_fields = ['merchant']
+
+
 class ShopSerializer(serializers.ModelSerializer):
-    merchant_name = serializers.CharField(source='merchant.merchant_name', read_only=True)
+    """Serializer for Merchant (acting as Shop)"""
     
     class Meta:
         model = Shop
-        fields = ['shop_id', 'merchant', 'merchant_name', 'shop_name', 'description', 'is_active', 'created_at', 'updated_at']
-        read_only_fields = ['merchant']
+        fields = ['id', 'merchant_name', 'owner_name', 'email', 'phone', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
@@ -101,10 +109,9 @@ class ProductReviewSerializer(serializers.ModelSerializer):
 
 class ProductListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for product listings"""
-    shop_name = serializers.CharField(source='shop.shop_name', read_only=True)
+    merchant_name = serializers.CharField(source='merchant.merchant_name', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
-    brand_name = serializers.CharField(source='brand.name', read_only=True)
-    type_name = serializers.CharField(source='type.get_name_display', read_only=True)
+    brand_name = serializers.CharField(source='brand.brand_name', read_only=True)
     primary_image = serializers.SerializerMethodField()
     total_reviews = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
@@ -112,8 +119,8 @@ class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'product_id', 'name', 'price', 'stock', 'status', 'shop_name',
-            'category_name', 'brand_name', 'type_name', 'primary_image',
+            'product_id', 'name', 'price', 'stock', 'status', 'merchant_name',
+            'category_name', 'brand_name', 'primary_image',
             'total_reviews', 'average_rating', 'created_at', 'updated_at'
         ]
     
@@ -139,14 +146,10 @@ class ProductListSerializer(serializers.ModelSerializer):
 
 class ProductDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for single product view"""
-    shop = ShopSerializer(read_only=True)
+    merchant = ShopSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
-    brand = BrandSerializer(read_only=True)
-    type = ProductTypeSerializer(read_only=True)
+    brand = MerchantBrandSerializer(read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
-    variants = ProductVariantSerializer(many=True, read_only=True)
-    tags = ProductTagSerializer(many=True, read_only=True)
-    reviews = ProductReviewSerializer(many=True, read_only=True)
     total_reviews = serializers.SerializerMethodField()
     average_rating = serializers.SerializerMethodField()
     is_in_stock = serializers.ReadOnlyField()
@@ -154,9 +157,9 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'product_id', 'shop', 'type', 'name', 'description', 'price', 
+            'product_id', 'merchant', 'name', 'description', 'price', 
             'stock', 'category', 'brand', 'status', 'sku', 'weight', 
-            'dimensions', 'images', 'variants', 'tags', 'reviews',
+            'dimensions', 'images',
             'total_reviews', 'average_rating', 'is_in_stock',
             'created_at', 'updated_at'
         ]

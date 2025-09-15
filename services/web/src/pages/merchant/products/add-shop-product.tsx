@@ -102,6 +102,14 @@ const AddShopProductPage = () => {
 
   // Fetch categories and brands
   const fetchSupportingData = useCallback(async () => {
+    if (!user) {
+      console.log('User not authenticated, skipping API calls');
+      setLoadingData(false);
+      return; // Don't fetch if user is not authenticated
+    }
+    
+    console.log('User authenticated, fetching categories and brands...');
+    
     try {
       setLoadingData(true);
       
@@ -110,15 +118,19 @@ const AddShopProductPage = () => {
         api.get('/products/shop-products/brands/')
       ]);
 
+      console.log('Categories response:', categoriesRes.data);
+      console.log('Brands response:', brandsRes.data);
+
       setCategories(categoriesRes.data.categories || []);
       setBrands(brandsRes.data.brands || []);
+      setErrors({}); // Clear any previous errors
     } catch (error) {
       console.error('Error fetching supporting data:', error);
       setErrors({ general: 'Failed to load form data. Please refresh the page.' });
     } finally {
       setLoadingData(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     fetchSupportingData();

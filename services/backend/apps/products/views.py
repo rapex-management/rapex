@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 
 from .models import (
     ShopProduct, PrelovedProduct, ReadyToEatProduct, FreshProduct,
-    MerchantCategory, Category, Brand, 
+    MerchantCategory, Category, Brand, MerchantBrand,
     ProductImage, ProductVariant, ProductTag, ProductReview
 )
 
@@ -37,7 +37,7 @@ class ProductType:
 from .serializers import (
     ProductListSerializer, ProductDetailSerializer, ProductCreateUpdateSerializer,
     ShopProductCreateUpdateSerializer,
-    ProductTypeSerializer, CategorySerializer, BrandSerializer, ShopSerializer,
+    ProductTypeSerializer, CategorySerializer, BrandSerializer, MerchantBrandSerializer, ShopSerializer,
     ProductImageSerializer, ProductVariantSerializer, ProductTagSerializer
 )
 from .permissions import IsMerchant, IsProductOwner, IsShopOwner
@@ -63,13 +63,9 @@ class ProductListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         # Only return products belonging to the authenticated merchant
         merchant = self.request.user
-        try:
-            shop = Shop.objects.get(merchant=merchant)
-            return Product.objects.filter(shop=shop).select_related(
-                'shop', 'category', 'brand', 'type'
-            ).prefetch_related('images', 'reviews')
-        except Shop.DoesNotExist:
-            return Product.objects.none()
+        return Product.objects.filter(merchant=merchant).select_related(
+            'merchant', 'category', 'brand'
+        ).prefetch_related('images')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -78,12 +74,7 @@ class ProductListCreateView(generics.ListCreateAPIView):
     
     def perform_create(self, serializer):
         merchant = self.request.user
-        # Get or create shop for merchant
-        shop, created = Shop.objects.get_or_create(
-            merchant=merchant,
-            defaults={'shop_name': merchant.merchant_name}
-        )
-        serializer.save(shop=shop)
+        serializer.save(merchant=merchant)
 
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -93,13 +84,9 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     def get_queryset(self):
         merchant = self.request.user
-        try:
-            shop = Shop.objects.get(merchant=merchant)
-            return Product.objects.filter(shop=shop).select_related(
-                'shop', 'category', 'brand', 'type'
-            ).prefetch_related('images', 'variants', 'tags', 'reviews')
-        except Shop.DoesNotExist:
-            return Product.objects.none()
+        return Product.objects.filter(merchant=merchant).select_related(
+            'merchant', 'category', 'brand'
+        ).prefetch_related('images')
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -117,20 +104,18 @@ class ProductImageListCreateView(generics.ListCreateAPIView):
         # Ensure the product belongs to the merchant
         merchant = self.request.user
         try:
-            shop = Shop.objects.get(merchant=merchant)
-            product = Product.objects.get(product_id=product_id, shop=shop)
+            product = Product.objects.get(product_id=product_id, merchant=merchant)
             return ProductImage.objects.filter(product=product)
-        except (Shop.DoesNotExist, Product.DoesNotExist):
+        except Product.DoesNotExist:
             return ProductImage.objects.none()
     
     def perform_create(self, serializer):
         product_id = self.kwargs['product_id']
         merchant = self.request.user
         try:
-            shop = Shop.objects.get(merchant=merchant)
-            product = Product.objects.get(product_id=product_id, shop=shop)
+            product = Product.objects.get(product_id=product_id, merchant=merchant)
             serializer.save(product=product)
-        except (Shop.DoesNotExist, Product.DoesNotExist):
+        except Product.DoesNotExist:
             raise ValidationError("Product not found or access denied")
 
 
@@ -142,11 +127,7 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     def get_queryset(self):
         merchant = self.request.user
-        try:
-            shop = Shop.objects.get(merchant=merchant)
-            return ProductImage.objects.filter(product__shop=shop)
-        except Shop.DoesNotExist:
-            return ProductImage.objects.none()
+        return ProductImage.objects.filter(product__merchant=merchant)
 
 
 class ProductVariantListCreateView(generics.ListCreateAPIView):
@@ -158,20 +139,18 @@ class ProductVariantListCreateView(generics.ListCreateAPIView):
         product_id = self.kwargs['product_id']
         merchant = self.request.user
         try:
-            shop = Shop.objects.get(merchant=merchant)
-            product = Product.objects.get(product_id=product_id, shop=shop)
+            product = Product.objects.get(product_id=product_id, merchant=merchant)
             return ProductVariant.objects.filter(product=product)
-        except (Shop.DoesNotExist, Product.DoesNotExist):
+        except Product.DoesNotExist:
             return ProductVariant.objects.none()
     
     def perform_create(self, serializer):
         product_id = self.kwargs['product_id']
         merchant = self.request.user
         try:
-            shop = Shop.objects.get(merchant=merchant)
-            product = Product.objects.get(product_id=product_id, shop=shop)
+            product = Product.objects.get(product_id=product_id, merchant=merchant)
             serializer.save(product=product)
-        except (Shop.DoesNotExist, Product.DoesNotExist):
+        except Product.DoesNotExist:
             raise ValidationError("Product not found or access denied")
 
 
@@ -183,11 +162,7 @@ class ProductVariantDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     def get_queryset(self):
         merchant = self.request.user
-        try:
-            shop = Shop.objects.get(merchant=merchant)
-            return ProductVariant.objects.filter(product__shop=shop)
-        except Shop.DoesNotExist:
-            return ProductVariant.objects.none()
+        return ProductVariant.objects.filter(product__merchant=merchant)
 
 
 # Supporting data views
@@ -206,12 +181,19 @@ class CategoryListView(generics.ListAPIView):
 
 
 class BrandListView(generics.ListAPIView):
-    """List all brands"""
-    queryset = Brand.objects.all()
-    serializer_class = BrandSerializer
-    permission_classes = [IsAuthenticated]
+    """List merchant brands - deprecated, use shop-products/brands/ instead"""
+    permission_classes = [IsAuthenticated, IsMerchant]
     filter_backends = [filters.SearchFilter]
-    search_fields = ['name']
+    search_fields = ['brand_name']
+    
+    def get_queryset(self):
+        # Return merchant-specific brands
+        merchant = self.request.user
+        return MerchantBrand.objects.filter(merchant=merchant).order_by('brand_name')
+    
+    def get_serializer_class(self):
+        from .serializers import MerchantBrandSerializer
+        return MerchantBrandSerializer
 
 
 class ShopDetailView(generics.RetrieveUpdateAPIView):
@@ -235,8 +217,7 @@ def product_dashboard(request):
     """Get product dashboard statistics for merchant"""
     merchant = request.user
     try:
-        shop = Shop.objects.get(merchant=merchant)
-        products = Product.objects.filter(shop=shop)
+        products = Product.objects.filter(merchant=merchant)
         
         # Basic stats
         total_products = products.count()
@@ -309,10 +290,9 @@ def bulk_update_products(request):
         )
     
     try:
-        shop = Shop.objects.get(merchant=merchant)
         products = Product.objects.filter(
             product_id__in=product_ids, 
-            shop=shop
+            merchant=merchant
         )
         
         updated_count = products.update(**update_data)
@@ -322,10 +302,10 @@ def bulk_update_products(request):
             'updated_count': updated_count
         }, status=status.HTTP_200_OK)
         
-    except Shop.DoesNotExist:
+    except Exception as e:
         return Response(
-            {'error': 'Shop not found'}, 
-            status=status.HTTP_404_NOT_FOUND
+            {'error': f'Failed to update products: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
 
@@ -368,8 +348,9 @@ def bulk_upload_products(request):
         errors = []
         
         # Get all categories, brands, and product types for validation
-        categories = {cat.name: cat for cat in Category.objects.all()}
-        brands = {brand.name: brand for brand in Brand.objects.all()}
+        merchant = request.user
+        categories = {cat.name: cat for cat in MerchantCategory.objects.filter(merchant=merchant)}
+        brands = {brand.brand_name: brand for brand in MerchantBrand.objects.filter(merchant=merchant)}
         product_types = {pt.get_name_display(): pt for pt in ProductType.objects.all()}
         
         for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 because of header
@@ -439,8 +420,11 @@ def bulk_upload_products(request):
                     brand_name = row['brand'].strip()
                     brand = brands.get(brand_name)
                     if not brand:
-                        # Create new brand if it doesn't exist
-                        brand = Brand.objects.create(name=brand_name)
+                        # Create new merchant brand if it doesn't exist
+                        brand = MerchantBrand.objects.create(
+                            merchant=merchant,
+                            brand_name=brand_name
+                        )
                         brands[brand_name] = brand
                 
                 # Optional weight validation
@@ -629,18 +613,33 @@ def shop_product_categories(request):
     """Get merchant categories for the dropdown"""
     try:
         merchant = request.user
-        categories = MerchantCategory.objects.filter(
+        
+        # First try to get merchant-specific categories
+        merchant_categories = MerchantCategory.objects.filter(
             merchant=merchant
         ).order_by('name')
         
-        category_data = [
-            {
-                'category_id': cat.category_id,
-                'name': cat.name,
-                'description': cat.description
-            }
-            for cat in categories
-        ]
+        category_data = []
+        
+        if merchant_categories.exists():
+            category_data = [
+                {
+                    'category_id': str(cat.category_id),
+                    'name': cat.name,
+                    'description': ''  # No description field in current model
+                }
+                for cat in merchant_categories
+            ]
+        else:
+            # If no merchant categories, provide some default categories
+            default_categories = [
+                {'category_id': 'general', 'name': 'General', 'description': 'General products'},
+                {'category_id': 'electronics', 'name': 'Electronics', 'description': 'Electronic devices and accessories'},
+                {'category_id': 'clothing', 'name': 'Clothing', 'description': 'Apparel and fashion items'},
+                {'category_id': 'home', 'name': 'Home & Garden', 'description': 'Home improvement and garden supplies'},
+                {'category_id': 'health', 'name': 'Health & Beauty', 'description': 'Health and beauty products'},
+            ]
+            category_data = default_categories
         
         return Response({
             'categories': category_data,
@@ -655,20 +654,37 @@ def shop_product_categories(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsMerchant])
 def shop_product_brands(request):
-    """Get all brands for the dropdown"""
+    """Get merchant-specific brands for the dropdown"""
     try:
-        brands = Brand.objects.all().order_by('name')
+        merchant = request.user
         
-        brand_data = [
-            {
-                'brand_id': brand.brand_id,
-                'name': brand.name,
-                'description': brand.description
-            }
-            for brand in brands
-        ]
+        # First try to get merchant-specific brands
+        from .models import MerchantBrand
+        merchant_brands = MerchantBrand.objects.filter(
+            merchant=merchant
+        ).order_by('brand_name')
+        
+        brand_data = []
+        
+        if merchant_brands.exists():
+            brand_data = [
+                {
+                    'brand_id': str(brand.brand_id),
+                    'name': brand.brand_name,
+                    'description': ''  # Simplified model has no description
+                }
+                for brand in merchant_brands
+            ]
+        else:
+            # If no merchant brands, provide some default brands
+            default_brands = [
+                {'brand_id': 'generic', 'name': 'Generic', 'description': 'Generic brand'},
+                {'brand_id': 'store-brand', 'name': 'Store Brand', 'description': 'Store or merchant brand'},
+                {'brand_id': 'unbranded', 'name': 'Unbranded', 'description': 'No specific brand'},
+            ]
+            brand_data = default_brands
         
         return Response({
             'brands': brand_data,
@@ -678,6 +694,70 @@ def shop_product_brands(request):
     except Exception as e:
         return Response(
             {'error': f'Error fetching brands: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsMerchant])
+def create_merchant_category(request):
+    """Create a new merchant category"""
+    try:
+        merchant = request.user
+        category_name = request.data.get('name')
+        
+        if not category_name:
+            return Response(
+                {'error': 'Category name is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        category, created = MerchantCategory.objects.get_or_create(
+            merchant=merchant,
+            name=category_name
+        )
+        
+        return Response({
+            'category_id': str(category.category_id),
+            'name': category.name,
+            'created': created
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error creating category: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsMerchant])
+def create_merchant_brand(request):
+    """Create a new merchant brand"""
+    try:
+        merchant = request.user
+        brand_name = request.data.get('name')
+        
+        if not brand_name:
+            return Response(
+                {'error': 'Brand name is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        brand, created = MerchantBrand.objects.get_or_create(
+            merchant=merchant,
+            brand_name=brand_name
+        )
+        
+        return Response({
+            'brand_id': str(brand.brand_id),
+            'name': brand.brand_name,
+            'created': created
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error creating brand: {str(e)}'}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 

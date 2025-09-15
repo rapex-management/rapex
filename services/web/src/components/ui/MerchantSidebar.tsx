@@ -60,7 +60,6 @@ export const MerchantSidebar = memo(({ onLogout }: MerchantSidebarProps) => {
       children: [
         { id: 'my-products', label: 'My Products', href: '/merchant/products', icon: <div className="w-2 h-2 bg-blue-500 rounded-full"></div> },
         { id: 'add-shop-product', label: 'Add Shop Product', href: '/merchant/products/add-shop-product', icon: <div className="w-2 h-2 bg-green-500 rounded-full"></div> },
-        { id: 'add-product', label: 'Add Products (Legacy)', href: '/merchant/products/add', icon: <div className="w-2 h-2 bg-yellow-500 rounded-full"></div> },
         { id: 'bulk-upload-products', label: 'Bulk Upload', href: '/merchant/products/bulk', icon: <div className="w-2 h-2 bg-purple-500 rounded-full"></div> },
       ]
     },
