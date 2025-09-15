@@ -117,7 +117,7 @@ const EditProductPage = () => {
       });
     } catch (error) {
       console.error('Error fetching product:', error);
-      router.push('/merchant/products');
+      router.push('/merchant/shop-products');
     } finally {
       setLoading(false);
     }
@@ -208,8 +208,8 @@ const EditProductPage = () => {
 
       await api.patch(`/products/${id}/`, productData);
       
-      // Redirect back to products list with success message
-      router.push('/merchant/products?updated=true');
+      // Redirect back to shop products list with success message
+      router.push('/merchant/shop-products?updated=true');
     } catch (error: unknown) {
       console.error('Error updating product:', error);
       if (error && typeof error === 'object' && 'response' in error) {
@@ -280,10 +280,10 @@ const EditProductPage = () => {
           <h2 className="text-2xl font-bold text-gray-900">Product not found</h2>
           <p className="mt-2 text-gray-600">The product you&apos;re looking for doesn&apos;t exist.</p>
           <Link
-            href="/merchant/products"
+            href="/merchant/shop-products"
             className="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium"
           >
-            Back to Products
+            Back to Shop Products
           </Link>
         </div>
       </div>
@@ -298,7 +298,7 @@ const EditProductPage = () => {
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center space-x-4">
               <Link
-                href="/merchant/products"
+                href="/merchant/shop-products"
                 className="text-gray-500 hover:text-gray-700"
               >
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -306,21 +306,21 @@ const EditProductPage = () => {
                 </svg>
               </Link>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Edit Product</h1>
+                <h1 className="text-3xl font-bold text-gray-900">Edit Shop Product</h1>
                 <p className="mt-1 text-sm text-gray-500">
-                  Update your product information
+                  Update your shop product information
                 </p>
               </div>
             </div>
             <div className="flex space-x-4">
               <Link
-                href={`/merchant/products/images/${id}`}
+                href={`/merchant/shop-products/images/${id}`}
                 className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-md font-medium"
               >
                 Manage Images
               </Link>
               <Link
-                href={`/merchant/products/variants/${id}`}
+                href={`/merchant/shop-products/variants/${id}`}
                 className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-md font-medium"
               >
                 Manage Variants
@@ -710,7 +710,7 @@ const EditProductPage = () => {
           {/* Form Actions */}
           <div className="flex justify-end space-x-4">
             <Link
-              href="/merchant/products"
+              href="/merchant/shop-products"
               className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 font-medium"
             >
               Cancel

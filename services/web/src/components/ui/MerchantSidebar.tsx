@@ -50,17 +50,17 @@ export const MerchantSidebar = memo(({ onLogout }: MerchantSidebarProps) => {
       ]
     },
     {
-      id: 'products',
-      label: 'Products',
+      id: 'shop-products',
+      label: 'Shop Products',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
         </svg>
       ),
       children: [
-        { id: 'my-products', label: 'My Products', href: '/merchant/products', icon: <div className="w-2 h-2 bg-blue-500 rounded-full"></div> },
-        { id: 'add-shop-product', label: 'Add Shop Product', href: '/merchant/products/add-shop-product', icon: <div className="w-2 h-2 bg-green-500 rounded-full"></div> },
-        { id: 'bulk-upload-products', label: 'Bulk Upload', href: '/merchant/products/bulk', icon: <div className="w-2 h-2 bg-purple-500 rounded-full"></div> },
+        { id: 'my-shop-products', label: 'My Shop Products', href: '/merchant/shop-products', icon: <div className="w-2 h-2 bg-blue-500 rounded-full"></div> },
+        { id: 'add-shop-product', label: 'Add Shop Product', href: '/merchant/shop-products/add', icon: <div className="w-2 h-2 bg-green-500 rounded-full"></div> },
+        { id: 'bulk-upload-shop-products', label: 'Bulk Upload', href: '/merchant/shop-products/bulk', icon: <div className="w-2 h-2 bg-purple-500 rounded-full"></div> },
       ]
     },
     {

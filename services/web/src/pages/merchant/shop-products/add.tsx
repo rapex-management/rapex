@@ -7,6 +7,7 @@ import { Input } from '../../../components/ui/Input';
 import { Dropdown } from '../../../components/ui/Dropdown';
 import { Button } from '../../../components/ui/Button';
 import { PageLoader } from '../../../components/ui/LoadingSpinner';
+import { ImageUpload } from '../../../components/ui/ImageUpload';
 import { MerchantAuthGuard } from '../../../lib/auth/guards/MerchantAuthGuard';
 import { useMerchantAuth } from '../../../lib/auth/hooks/useMerchantAuth';
 import api from '../../../services/api';
@@ -39,6 +40,7 @@ interface FormData {
     height: string;
   };
   images: string[];
+  imageFiles: File[];
 }
 
 interface FormErrors {
@@ -75,7 +77,7 @@ const AddShopProductPage = () => {
     stock: '0',
     category: '',
     brand: '',
-    status: 'draft',
+    status: 'active',
     sku: '',
     weight: '',
     dimensions: {
@@ -83,7 +85,8 @@ const AddShopProductPage = () => {
       width: '',
       height: ''
     },
-    images: ['']
+    images: [''],
+    imageFiles: []
   });
 
   // Loading and error states
@@ -114,8 +117,8 @@ const AddShopProductPage = () => {
       setLoadingData(true);
       
       const [categoriesRes, brandsRes] = await Promise.all([
-        api.get('/products/shop-products/categories/'),
-        api.get('/products/shop-products/brands/')
+        api.get('/api/products/categories/'),
+        api.get('/api/products/brands/')
       ]);
 
       console.log('Categories response:', categoriesRes.data);
@@ -177,6 +180,14 @@ const AddShopProductPage = () => {
     setFormData(prev => ({
       ...prev,
       images: prev.images.filter((_, i) => i !== index)
+    }));
+  }, []);
+
+  // Handle image files change
+  const handleImageFilesChange = useCallback((files: File[]) => {
+    setFormData(prev => ({
+      ...prev,
+      imageFiles: files
     }));
   }, []);
 
@@ -276,16 +287,37 @@ const AddShopProductPage = () => {
         };
       }
 
-      // Add images (filter out empty strings)
+      // Handle image uploads and combine with URL images
+      const allImageUrls: string[] = [];
+      
+      // Upload files first if any
+      if (formData.imageFiles.length > 0) {
+        for (const file of formData.imageFiles) {
+          const formDataFile = new FormData();
+          formDataFile.append('image', file);
+          
+          const uploadResponse = await api.post('/api/products/upload-image/', formDataFile, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          });
+          
+          allImageUrls.push(uploadResponse.data.image_url);
+        }
+      }
+      
+      // Add existing URL images (filter out empty strings)
       const validImages = formData.images.filter(img => img.trim());
-      if (validImages.length > 0) {
-        submissionData.images = validImages;
+      allImageUrls.push(...validImages);
+      
+      if (allImageUrls.length > 0) {
+        submissionData.images = allImageUrls;
       }
 
-      await api.post('/products/shop-products/', submissionData);
+      await api.post('/api/products/shop-products/', submissionData);
       
       // Redirect to products list with success message
-      router.push('/merchant/products?success=Product created successfully');
+      router.push('/merchant/shop-products?success=Product created successfully');
       
     } catch (error: unknown) {
       console.error('Error creating product:', error);
@@ -342,7 +374,7 @@ const AddShopProductPage = () => {
               <div className="mb-8 flex justify-between items-center">
                 <div className="flex items-center space-x-4">
                   <Link 
-                    href="/merchant/products" 
+                    href="/merchant/shop-products" 
                     className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                   >
                     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -468,6 +500,21 @@ const AddShopProductPage = () => {
                       }
                     />
 
+                    <Dropdown
+                      label="Status"
+                      options={statusOptions}
+                      value={formData.status}
+                      onChange={(value) => handleInputChange('status', value)}
+                      placeholder="Select status"
+                      variant="outlined"
+                      size="md"
+                      leftIcon={
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      }
+                    />
+
                     <div className="md:col-span-2">
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
                         Description
@@ -527,21 +574,6 @@ const AddShopProductPage = () => {
                         </svg>
                       }
                     />
-
-                    <Dropdown
-                      label="Status"
-                      options={statusOptions}
-                      value={formData.status}
-                      onChange={(value) => handleInputChange('status', value)}
-                      placeholder="Select status"
-                      variant="outlined"
-                      size="md"
-                      leftIcon={
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      }
-                    />
                   </div>
 
                   {/* Dimensions */}
@@ -595,64 +627,72 @@ const AddShopProductPage = () => {
 
                 {/* Images */}
                 <Card variant="elevated" className="border-l-4 border-l-green-500">
-                  <div className="flex items-center space-x-3 mb-6">
-                    <div className="p-2 bg-green-100 rounded-lg">
-                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                    <h2 className="text-xl font-semibold text-gray-900">Product Images</h2>
-                  </div>
-
-                  <div className="space-y-4">
-                    {formData.images.map((image, index) => (
-                      <div key={index} className="flex items-center space-x-3">
-                        <Input
-                          label={`Image URL ${index + 1}`}
-                          type="url"
-                          value={image}
-                          onChange={(e) => handleImageChange(index, e.target.value)}
-                          placeholder="https://example.com/image.jpg"
-                          variant="outlined"
-                          size="md"
-                          className="flex-1"
-                          leftIcon={
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                            </svg>
-                          }
-                        />
-                        {formData.images.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeImageField(index)}
-                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        )}
+                  <ImageUpload
+                    label="Product Images"
+                    images={formData.imageFiles}
+                    onChange={handleImageFilesChange}
+                    maxFiles={15}
+                    maxSize={2}
+                    helperText="Upload high-quality product images to attract more customers. You can upload up to 15 images."
+                    error={errors.images}
+                  />
+                  
+                  {/* Legacy URL Input (Optional) */}
+                  {formData.images.some(img => img.trim()) && (
+                    <div className="mt-6 pt-6 border-t border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-4">Additional Image URLs (Optional)</h4>
+                      <div className="space-y-4">
+                        {formData.images.map((image, index) => (
+                          <div key={index} className="flex items-center space-x-3">
+                            <Input
+                              label={`Image URL ${index + 1}`}
+                              type="url"
+                              value={image}
+                              onChange={(e) => handleImageChange(index, e.target.value)}
+                              placeholder="https://example.com/image.jpg"
+                              variant="outlined"
+                              size="md"
+                              className="flex-1"
+                              leftIcon={
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                </svg>
+                              }
+                            />
+                            {formData.images.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeImageField(index)}
+                                className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        
+                        <button
+                          type="button"
+                          onClick={addImageField}
+                          className="flex items-center space-x-2 text-green-600 hover:text-green-700 font-medium transition-colors"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                          <span>Add Image URL</span>
+                        </button>
                       </div>
-                    ))}
-                    
-                    <button
-                      type="button"
-                      onClick={addImageField}
-                      className="flex items-center space-x-2 text-green-600 hover:text-green-700 font-medium transition-colors"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      <span>Add Another Image</span>
-                    </button>
-                  </div>
+                    </div>
+                  )}
+                  
                 </Card>
 
                 {/* Submit Button */}
                 <div className="flex justify-end space-x-4">
                   <Link
-                    href="/merchant/products"
+                    href="/merchant/shop-products"
                     className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-colors font-medium"
                   >
                     Cancel

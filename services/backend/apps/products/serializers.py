@@ -127,11 +127,18 @@ class ProductListSerializer(serializers.ModelSerializer):
     def get_primary_image(self, obj):
         primary_image = obj.primary_image
         if primary_image:
-            return {
-                'image_id': primary_image.image_id,
-                'image_url': primary_image.image_url,
-                'alt_text': primary_image.alt_text
-            }
+            # Handle both old ProductImage objects and new string URLs
+            if isinstance(primary_image, str):
+                return {
+                    'image_url': primary_image,
+                    'alt_text': obj.name
+                }
+            else:
+                return {
+                    'image_id': primary_image.image_id,
+                    'image_url': primary_image.image_url,
+                    'alt_text': primary_image.alt_text
+                }
         return None
     
     def get_total_reviews(self, obj):

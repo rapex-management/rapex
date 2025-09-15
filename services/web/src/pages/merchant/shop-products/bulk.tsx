@@ -41,7 +41,7 @@ const BulkUploadPage = memo(() => {
   const downloadTemplate = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/products/csv-template/', {
+      const response = await api.get('/api/products/csv-template/', {
         responseType: 'blob',
       });
       
@@ -195,7 +195,7 @@ const BulkUploadPage = memo(() => {
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const response = await api.post('/products/bulk-upload/', formData, {
+      const response = await api.post('/api/products/bulk-upload/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -279,7 +279,7 @@ const BulkUploadPage = memo(() => {
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center space-x-4">
               <Link
-                href="/merchant/products"
+                href="/merchant/shop-products"
                 className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all duration-200"
               >
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -550,7 +550,7 @@ const BulkUploadPage = memo(() => {
                   {uploadResult.success_count > 0 && (
                     <div className="mt-4 flex space-x-3">
                       <Link
-                        href="/merchant/products"
+                        href="/merchant/shop-products"
                         className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200"
                       >
                         <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">

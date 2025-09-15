@@ -764,6 +764,70 @@ def create_merchant_brand(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsMerchant])
+def upload_product_image(request):
+    """Upload a product image with validation"""
+    import os
+    from django.core.files.storage import default_storage
+    from django.core.files.base import ContentFile
+    from PIL import Image
+    import uuid
+    
+    try:
+        if 'image' not in request.FILES:
+            return Response(
+                {'error': 'No image file provided'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        image_file = request.FILES['image']
+        
+        # Validate file size (2MB limit)
+        if image_file.size > 2 * 1024 * 1024:  # 2MB in bytes
+            return Response(
+                {'error': 'Image file too large. Maximum size is 2MB'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp']
+        if image_file.content_type not in allowed_types:
+            return Response(
+                {'error': 'Invalid file type. Only JPEG, PNG, and WebP images are allowed'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Generate unique filename
+        file_extension = os.path.splitext(image_file.name)[1].lower()
+        unique_filename = f"product_{uuid.uuid4().hex}{file_extension}"
+        
+        # Create directory structure: media/products/merchant_id/
+        merchant_id = str(request.user.id)
+        upload_path = f"products/{merchant_id}/{unique_filename}"
+        
+        # Save file
+        file_path = default_storage.save(upload_path, ContentFile(image_file.read()))
+        
+        # Get file URL for frontend preview
+        file_url = request.build_absolute_uri(default_storage.url(file_path))
+        
+        return Response({
+            'success': True,
+            'filename': unique_filename,
+            'file_path': file_path,
+            'file_url': file_url,
+            'file_size': image_file.size,
+            'message': 'Image uploaded successfully'
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Error uploading image: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsMerchant])
 def create_merchant_category(request):
     """Create a new merchant category"""
     try:

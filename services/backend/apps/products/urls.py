@@ -17,6 +17,7 @@ urlpatterns = [
     path('shop-products/categories/create/', views.create_merchant_category, name='create-merchant-category'),
     path('shop-products/brands/', views.shop_product_brands, name='shop-product-brands'),
     path('shop-products/brands/create/', views.create_merchant_brand, name='create-merchant-brand'),
+    path('shop-products/upload-image/', views.upload_product_image, name='upload-product-image'),
     
     # Product images
     path('<uuid:product_id>/images/', views.ProductImageListCreateView.as_view(), name='product-images'),

@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework import routers
 
 # Test Docker auto-reload for Django backend - CHANGED AGAIN!
@@ -21,3 +23,7 @@ urlpatterns = [
     path('api/products/', include('apps.products.urls')),
     path('api/wallets/', include('apps.wallets.urls')),
 ]
+
+# Serve media files during development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
