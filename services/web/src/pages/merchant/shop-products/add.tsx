@@ -10,6 +10,8 @@ import { PageLoader } from '../../../components/ui/LoadingSpinner';
 import { ImageUpload } from '../../../components/ui/ImageUpload';
 import { MerchantAuthGuard } from '../../../lib/auth/guards/MerchantAuthGuard';
 import { useMerchantAuth } from '../../../lib/auth/hooks/useMerchantAuth';
+import Notification from '../../../components/ui/Notification';
+import { useNotification } from '../../../hooks/useNotification';
 import api from '../../../services/api';
 
 interface Category {
@@ -68,6 +70,7 @@ interface SubmissionData {
 const AddShopProductPage = () => {
   const { user } = useMerchantAuth();
   const router = useRouter();
+  const { notifications, showSuccess, showError, hideNotification } = useNotification();
   
   // Form state
   const [formData, setFormData] = useState<FormData>({
@@ -106,12 +109,9 @@ const AddShopProductPage = () => {
   // Fetch categories and brands
   const fetchSupportingData = useCallback(async () => {
     if (!user) {
-      console.log('User not authenticated, skipping API calls');
       setLoadingData(false);
       return; // Don't fetch if user is not authenticated
     }
-    
-    console.log('User authenticated, fetching categories and brands...');
     
     try {
       setLoadingData(true);
@@ -121,19 +121,14 @@ const AddShopProductPage = () => {
         api.get('/api/products/brands/')
       ]);
 
-      console.log('Categories response:', categoriesRes.data);
-      console.log('Brands response:', brandsRes.data);
-
       setCategories(categoriesRes.data.categories || []);
       setBrands(brandsRes.data.brands || []);
-      setErrors({}); // Clear any previous errors
-    } catch (error) {
-      console.error('Error fetching supporting data:', error);
-      setErrors({ general: 'Failed to load form data. Please refresh the page.' });
+    } catch {
+      showError('Data Loading Failed', 'Failed to load form data. Please refresh the page.');
     } finally {
       setLoadingData(false);
     }
-  }, [user]);
+  }, [user, showError]);
 
   useEffect(() => {
     fetchSupportingData();
@@ -316,31 +311,31 @@ const AddShopProductPage = () => {
 
       await api.post('/api/products/shop-products/', submissionData);
       
-      // Redirect to products list with success message
-      router.push('/merchant/shop-products?success=Product created successfully');
+      // Show success notification and redirect
+      showSuccess('Product Created', 'Product created successfully!');
+      router.push('/merchant/shop-products');
       
     } catch (error: unknown) {
-      console.error('Error creating product:', error);
-      
       if (error && typeof error === 'object' && 'response' in error) {
         const axiosError = error as { response?: { data?: unknown } };
         if (axiosError.response?.data) {
           const apiErrors = axiosError.response.data;
           if (typeof apiErrors === 'object' && apiErrors !== null) {
             setErrors(apiErrors as FormErrors);
+            showError('Validation Errors', 'Please check your input and correct the highlighted errors.');
           } else {
-            setErrors({ general: 'Failed to create product. Please check your input and try again.' });
+            showError('Creation Failed', 'Failed to create product. Please check your input and try again.');
           }
         } else {
-          setErrors({ general: 'Network error. Please check your connection and try again.' });
+          showError('Network Error', 'Network error. Please check your connection and try again.');
         }
       } else {
-        setErrors({ general: 'An unexpected error occurred. Please try again.' });
+        showError('Unexpected Error', 'An unexpected error occurred. Please try again.');
       }
     } finally {
       setLoading(false);
     }
-  }, [formData, validateForm, router]);
+  }, [formData, validateForm, router, showSuccess, showError]);
 
   // Dropdown options
   const categoryOptions = useMemo(() => 
@@ -387,18 +382,6 @@ const AddShopProductPage = () => {
                   </div>
                 </div>
               </div>
-
-              {/* Error Alert */}
-              {errors.general && (
-                <Card variant="outlined" className="mb-6 border-red-200 bg-red-50">
-                  <div className="flex items-center space-x-3">
-                    <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-red-800">{errors.general}</span>
-                  </div>
-                </Card>
-              )}
 
               {/* Form */}
               <form onSubmit={handleSubmit} className="space-y-8">
@@ -717,6 +700,20 @@ const AddShopProductPage = () => {
           </main>
         </div>
       </div>
+      
+      {/* Render notifications */}
+      {notifications.map((notification) => (
+        <Notification
+          key={notification.id}
+          type={notification.type}
+          title={notification.title}
+          message={notification.message}
+          duration={notification.duration}
+          position={notification.position}
+          isVisible={true}
+          onClose={() => hideNotification(notification.id)}
+        />
+      ))}
     </MerchantAuthGuard>
   );
 };

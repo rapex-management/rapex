@@ -1,0 +1,6 @@
+name,description,price,stock,category,brand,status,sku,weight,length,width,height,tags
+Premium Coffee Beans,High-quality Arabica coffee beans from Ethiopian highlands. Perfect for espresso and drip coffee.,24.99,100,Food & Beverages,Highland Coffee,active,COF-001,1.0,15,10,25,organic,coffee,premium,fair-trade
+Wireless Bluetooth Headphones,Premium wireless headphones with noise cancellation and 30-hour battery life.,149.99,50,Electronics,TechAudio,active,HEAD-002,0.3,20,18,8,wireless,bluetooth,audio,premium
+Cotton T-Shirt,Comfortable 100% cotton t-shirt available in multiple colors.,19.99,200,Clothing,ComfortWear,draft,SHIRT-003,0.2,30,20,2,cotton,comfortable,casual
+Yoga Mat,Non-slip yoga mat with extra cushioning for comfort during practice.,39.99,75,Sports & Fitness,ZenFit,active,YOGA-004,2.5,180,60,1,yoga,fitness,non-slip,eco-friendly
+Stainless Steel Water Bottle,Insulated stainless steel water bottle that keeps drinks hot for 12h or cold for 24h.,29.99,120,Home & Kitchen,HydroLife,active,BOTTLE-005,0.6,25,8,8,insulated,steel,eco-friendly

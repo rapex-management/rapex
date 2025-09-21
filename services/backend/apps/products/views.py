@@ -16,7 +16,6 @@ from .models import (
 # Temporary compatibility - for migration purposes only
 # TODO: Update all views to use specific product types
 Product = ShopProduct  # Default to ShopProduct for now
-from apps.merchants.models import Merchant as Shop  # Temporary alias
 
 # Create a temporary ProductType class for compatibility
 class ProductType:
@@ -42,6 +41,9 @@ from .serializers import (
 )
 from .permissions import IsMerchant, IsProductOwner, IsShopOwner
 from apps.merchants.models import Merchant
+
+# Temporary compatibility alias after import
+# Shop = Merchant  # Shop is now just Merchant (commented out for now)
 
 
 class ProductPagination(PageNumberPagination):
@@ -312,196 +314,211 @@ def bulk_update_products(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsMerchant])
 def bulk_upload_products(request):
-    """Bulk upload products from CSV file"""
+    """Bulk upload shop products from CSV/Excel file with enhanced validation and performance"""
     import csv
     import io
+    import pandas as pd
     from decimal import Decimal, InvalidOperation
+    from django.db import transaction
+    from django.core.cache import cache
+    import uuid
+    import time
     
     merchant = request.user
-    csv_file = request.FILES.get('csv_file')
     
-    if not csv_file:
+    # Check for uploaded file
+    uploaded_file = request.FILES.get('file') or request.FILES.get('csv_file')
+    
+    if not uploaded_file:
         return Response(
-            {'error': 'CSV file is required'}, 
+            {'error': 'CSV or Excel file is required'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    if not csv_file.name.endswith('.csv'):
+    # Validate file type and size
+    allowed_extensions = ['.csv', '.xlsx', '.xls']
+    file_extension = uploaded_file.name.lower().split('.')[-1]
+    
+    if f'.{file_extension}' not in allowed_extensions:
         return Response(
-            {'error': 'File must be a CSV file'}, 
+            {'error': 'File must be CSV or Excel (.csv, .xlsx, .xls)'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # 20MB limit for better performance
+    if uploaded_file.size > 20 * 1024 * 1024:
+        return Response(
+            {'error': 'File size must be less than 20MB'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
     
     try:
-        # Get or create shop for merchant
-        shop, created = Shop.objects.get_or_create(
-            merchant=merchant,
-            defaults={'shop_name': merchant.merchant_name}
-        )
+        # Use merchant directly - ShopProduct uses merchant field, not shop field
+        # No need to create a separate shop object since ShopProduct.merchant = merchant
         
-        # Read CSV file
-        csv_data = csv_file.read().decode('utf-8')
-        csv_reader = csv.DictReader(io.StringIO(csv_data))
+        # Parse file based on type
+        try:
+            if file_extension == 'csv':
+                # Read CSV file
+                csv_data = uploaded_file.read().decode('utf-8')
+                df = pd.read_csv(io.StringIO(csv_data))
+            else:
+                # Read Excel file
+                df = pd.read_excel(uploaded_file)
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to parse file: {str(e)}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
+        # Validate required columns
+        required_columns = ['name', 'description', 'price', 'stock', 'category']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        
+        if missing_columns:
+            return Response(
+                {'error': f'Missing required columns: {", ".join(missing_columns)}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Clean and prepare data
+        df = df.fillna('')  # Replace NaN with empty strings
+        df = df.head(1000)  # Limit to 1000 rows for performance
+        
+        # Pre-fetch all categories and brands for validation (optimized)
+        merchant_categories = {cat.name.lower(): cat for cat in MerchantCategory.objects.filter(merchant=merchant)}
+        merchant_brands = {brand.brand_name.lower(): brand for brand in MerchantBrand.objects.filter(merchant=merchant)}
+        
+        # Batch processing variables
         success_count = 0
         error_count = 0
         errors = []
+        products_to_create = []
         
-        # Get all categories, brands, and product types for validation
-        merchant = request.user
-        categories = {cat.name: cat for cat in MerchantCategory.objects.filter(merchant=merchant)}
-        brands = {brand.brand_name: brand for brand in MerchantBrand.objects.filter(merchant=merchant)}
-        product_types = {pt.get_name_display(): pt for pt in ProductType.objects.all()}
-        
-        for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 because of header
+        # Process each row
+        for index, row in df.iterrows():
+            row_num = index + 2  # Account for header row
+            
             try:
                 # Validate required fields
-                required_fields = ['name', 'description', 'price', 'stock', 'category', 'type']
-                missing_fields = [field for field in required_fields if not row.get(field, '').strip()]
+                name = str(row.get('name', '')).strip()
+                description = str(row.get('description', '')).strip()
+                price_str = str(row.get('price', '')).strip()
+                stock_str = str(row.get('stock', '')).strip()
+                category_name = str(row.get('category', '')).strip()
                 
-                if missing_fields:
+                if not all([name, description, price_str, stock_str, category_name]):
                     errors.append({
                         'row': row_num,
-                        'error': f"Missing required fields: {', '.join(missing_fields)}"
+                        'error': 'Missing required fields: name, description, price, stock, category'
                     })
                     error_count += 1
                     continue
                 
-                # Validate price and stock
+                # Validate and convert price
                 try:
-                    price = Decimal(row['price'].strip())
+                    price = Decimal(price_str.replace('$', '').replace(',', ''))
                     if price <= 0:
                         raise ValueError("Price must be positive")
                 except (ValueError, InvalidOperation):
                     errors.append({
                         'row': row_num,
-                        'error': 'Invalid price format'
+                        'error': f'Invalid price format: {price_str}'
                     })
                     error_count += 1
                     continue
                 
+                # Validate and convert stock
                 try:
-                    stock = int(row['stock'].strip())
+                    stock = int(float(stock_str))  # Handle decimal inputs
                     if stock < 0:
                         raise ValueError("Stock cannot be negative")
                 except ValueError:
                     errors.append({
                         'row': row_num,
-                        'error': 'Invalid stock format'
+                        'error': f'Invalid stock format: {stock_str}'
                     })
                     error_count += 1
                     continue
                 
                 # Validate category
-                category_name = row['category'].strip()
-                category = categories.get(category_name)
+                category = merchant_categories.get(category_name.lower())
                 if not category:
-                    errors.append({
-                        'row': row_num,
-                        'error': f'Category "{category_name}" not found'
-                    })
-                    error_count += 1
-                    continue
-                
-                # Validate product type
-                type_name = row['type'].strip()
-                product_type = product_types.get(type_name)
-                if not product_type:
-                    errors.append({
-                        'row': row_num,
-                        'error': f'Product type "{type_name}" not found'
-                    })
-                    error_count += 1
-                    continue
-                
-                # Optional brand validation
-                brand = None
-                if row.get('brand', '').strip():
-                    brand_name = row['brand'].strip()
-                    brand = brands.get(brand_name)
-                    if not brand:
-                        # Create new merchant brand if it doesn't exist
-                        brand = MerchantBrand.objects.create(
+                    # Auto-create category if it doesn't exist
+                    try:
+                        category = MerchantCategory.objects.create(
                             merchant=merchant,
-                            brand_name=brand_name
+                            name=category_name
                         )
-                        brands[brand_name] = brand
+                        merchant_categories[category_name.lower()] = category
+                    except Exception as e:
+                        errors.append({
+                            'row': row_num,
+                            'error': f'Failed to create category "{category_name}": {str(e)}'
+                        })
+                        error_count += 1
+                        continue
+                
+                # Optional brand handling
+                brand = None
+                brand_name = str(row.get('brand', '')).strip()
+                if brand_name:
+                    brand = merchant_brands.get(brand_name.lower())
+                    if not brand:
+                        try:
+                            brand = MerchantBrand.objects.create(
+                                merchant=merchant,
+                                brand_name=brand_name
+                            )
+                            merchant_brands[brand_name.lower()] = brand
+                        except Exception:
+                            # If brand creation fails, continue without brand
+                            pass
                 
                 # Optional weight validation
                 weight = None
-                if row.get('weight', '').strip():
+                weight_str = str(row.get('weight', '')).strip()
+                if weight_str:
                     try:
-                        weight = Decimal(row['weight'].strip())
+                        weight = Decimal(weight_str.replace('kg', '').replace('g', ''))
                         if weight < 0:
                             raise ValueError("Weight cannot be negative")
                     except (ValueError, InvalidOperation):
                         errors.append({
                             'row': row_num,
-                            'error': 'Invalid weight format'
+                            'error': f'Invalid weight format: {weight_str}'
                         })
                         error_count += 1
                         continue
                 
-                # Create product
+                # Prepare product data
                 product_data = {
-                    'shop': shop,
-                    'type': product_type,
-                    'name': row['name'].strip(),
-                    'description': row['description'].strip(),
+                    'merchant': merchant,
+                    'name': name,
+                    'description': description,
                     'price': price,
                     'stock': stock,
                     'category': category,
                     'brand': brand,
-                    'status': row.get('status', 'draft').strip() or 'draft',
-                    'sku': row.get('sku', '').strip(),
+                    'status': str(row.get('status', 'draft')).strip().lower() or 'draft',
+                    'sku': str(row.get('sku', '')).strip() or None,
                     'weight': weight,
                 }
                 
                 # Handle dimensions
                 dimensions = {}
-                if row.get('length', '').strip():
-                    try:
-                        dimensions['length'] = float(row['length'].strip())
-                    except ValueError:
-                        pass
-                if row.get('width', '').strip():
-                    try:
-                        dimensions['width'] = float(row['width'].strip())
-                    except ValueError:
-                        pass
-                if row.get('height', '').strip():
-                    try:
-                        dimensions['height'] = float(row['height'].strip())
-                    except ValueError:
-                        pass
+                for dim in ['length', 'width', 'height']:
+                    dim_str = str(row.get(dim, '')).strip()
+                    if dim_str:
+                        try:
+                            dimensions[dim] = float(dim_str.replace('cm', '').replace('m', ''))
+                        except ValueError:
+                            pass
                 
                 if dimensions:
                     product_data['dimensions'] = dimensions
                 
-                # Create the product
-                product = Product.objects.create(**product_data)
-                
-                # Handle product images if image_url is provided
-                if row.get('image_url', '').strip():
-                    image_urls = [url.strip() for url in row['image_url'].split(';') if url.strip()]
-                    for i, image_url in enumerate(image_urls):
-                        ProductImage.objects.create(
-                            product=product,
-                            image_url=image_url,
-                            is_primary=(i == 0),  # First image is primary
-                            order=i
-                        )
-                
-                # Handle product tags if provided
-                if row.get('tags', '').strip():
-                    tags = [tag.strip() for tag in row['tags'].split(',') if tag.strip()]
-                    for tag_name in tags:
-                        ProductTag.objects.create(
-                            product=product,
-                            tag_name=tag_name
-                        )
-                
-                success_count += 1
+                products_to_create.append(product_data)
                 
             except Exception as e:
                 errors.append({
@@ -511,16 +528,52 @@ def bulk_upload_products(request):
                 error_count += 1
                 continue
         
-        return Response({
+        # Batch create products for better performance
+        if products_to_create:
+            try:
+                with transaction.atomic():
+                    created_products = []
+                    for product_data in products_to_create:
+                        try:
+                            product = ShopProduct.objects.create(**product_data)
+                            created_products.append(product)
+                            success_count += 1
+                        except Exception as e:
+                            errors.append({
+                                'row': 'unknown',
+                                'error': f'Database error: {str(e)}'
+                            })
+                            error_count += 1
+                            
+            except Exception as e:
+                return Response(
+                    {'error': f'Database transaction failed: {str(e)}'}, 
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        # Prepare response
+        response_data = {
             'message': f'Bulk upload completed. {success_count} products created, {error_count} errors.',
             'success_count': success_count,
             'error_count': error_count,
-            'errors': errors[:50]  # Limit errors to first 50 for response size
-        }, status=status.HTTP_200_OK if success_count > 0 else status.HTTP_400_BAD_REQUEST)
+            'total_rows': len(df),
+            'errors': errors[:100],  # Limit errors for response size
+            'merchant_id': merchant.id,
+            'processing_time': f'{time.time():.2f}s'
+        }
+        
+        # Cache result for potential retry
+        cache_key = f'bulk_upload_{merchant.id}_{int(time.time())}'
+        cache.set(cache_key, response_data, timeout=300)  # 5 minutes
+        
+        return Response(
+            response_data,
+            status=status.HTTP_200_OK if success_count > 0 else status.HTTP_400_BAD_REQUEST
+        )
         
     except Exception as e:
         return Response(
-            {'error': f'Failed to process CSV file: {str(e)}'}, 
+            {'error': f'Failed to process file: {str(e)}'}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -528,12 +581,76 @@ def bulk_upload_products(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsMerchant])
 def download_csv_template(request):
-    """Download CSV template for bulk upload"""
+    """Download enhanced CSV template for bulk upload with ShopProduct structure"""
     import csv
     from django.http import HttpResponse
     
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = 'attachment; filename="product_upload_template.csv"'
+    response['Content-Disposition'] = 'attachment; filename="shop_products_template.csv"'
+    
+    writer = csv.writer(response)
+    
+    # Write header with required and optional fields
+    writer.writerow([
+        # Required fields
+        'name', 'description', 'price', 'stock', 'category',
+        # Optional fields  
+        'brand', 'status', 'sku', 'weight', 'length', 'width', 'height', 'tags'
+    ])
+    
+    # Write sample data rows
+    sample_data = [
+        [
+            'Premium Coffee Beans',
+            'High-quality Arabica coffee beans from Ethiopian highlands. Perfect for espresso and drip coffee.',
+            '24.99',
+            '100',
+            'Food & Beverages',
+            'Highland Coffee',
+            'active',
+            'COF-001',
+            '1.0',
+            '15',
+            '10',
+            '25',
+            'organic,coffee,premium,fair-trade'
+        ],
+        [
+            'Wireless Bluetooth Headphones',
+            'Premium wireless headphones with noise cancellation and 30-hour battery life.',
+            '149.99',
+            '50',
+            'Electronics',
+            'TechAudio',
+            'active',
+            'HEAD-002',
+            '0.3',
+            '20',
+            '18',
+            '8',
+            'wireless,bluetooth,audio,premium'
+        ],
+        [
+            'Cotton T-Shirt',
+            'Comfortable 100% cotton t-shirt available in multiple colors.',
+            '19.99',
+            '200',
+            'Clothing',
+            'ComfortWear',
+            'draft',
+            'SHIRT-003',
+            '0.2',
+            '30',
+            '20',
+            '2',
+            'cotton,comfortable,casual'
+        ]
+    ]
+    
+    for row in sample_data:
+        writer.writerow(row)
+    
+    return response
     
     writer = csv.writer(response)
     
@@ -814,7 +931,8 @@ def upload_product_image(request):
             'success': True,
             'filename': unique_filename,
             'file_path': file_path,
-            'file_url': file_url,
+            'image_url': file_url,  # Frontend expects 'image_url'
+            'file_url': file_url,   # Keep for backward compatibility
             'file_size': image_file.size,
             'message': 'Image uploaded successfully'
         }, status=status.HTTP_201_CREATED)

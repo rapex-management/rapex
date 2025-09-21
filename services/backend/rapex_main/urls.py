@@ -16,12 +16,19 @@ except Exception:
     import sys
     print('Warning: AdminUserViewSet not registered:', file=sys.stderr)
 
+# Import views for direct shop-products endpoints
+from apps.products import views as product_views
+
 urlpatterns = [
     path('api/', include(router.urls)),
     path('api/', include('apps.webauth.urls')),
     path('api/merchants/', include('apps.merchants.urls')),
     path('api/products/', include('apps.products.urls')),
     path('api/wallets/', include('apps.wallets.urls')),
+    
+    # Direct shop-products endpoints for bulk operations
+    path('api/shop-products/bulk-upload/', product_views.bulk_upload_products, name='shop-products-bulk-upload'),
+    path('api/shop-products/csv-template/', product_views.download_csv_template, name='shop-products-csv-template'),
 ]
 
 # Serve media files during development

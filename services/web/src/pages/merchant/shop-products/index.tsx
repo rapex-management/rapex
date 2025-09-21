@@ -10,6 +10,11 @@ import { Button } from '../../../components/ui/Button';
 import { PageLoader } from '../../../components/ui/LoadingSpinner';
 import { MerchantAuthGuard } from '../../../lib/auth/guards/MerchantAuthGuard';
 import { useMerchantAuth } from '../../../lib/auth/hooks/useMerchantAuth';
+import Notification from '../../../components/ui/Notification';
+import { useNotification } from '../../../hooks/useNotification';
+import { ActionButtonsGroup } from '../../../components/ui/ActionButton';
+import { EnhancedPagination } from '../../../components/ui/EnhancedPagination';
+import { SecureConfirmationModal } from '../../../components/ui/SecureConfirmationModal';
 import api from '../../../services/api';
 
 interface Product {
@@ -54,6 +59,7 @@ interface ApiResponse {
 const ProductsPage: React.FC = () => {
   const { user } = useMerchantAuth();
   const router = useRouter();
+  const { notifications, showSuccess, showError, hideNotification } = useNotification();
 
   // State management
   const [products, setProducts] = useState<Product[]>([]);
@@ -64,7 +70,22 @@ const ProductsPage: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 50;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Confirmation Modal
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'warning',
+    onConfirm: () => {}
+  });
   
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,8 +129,7 @@ const ProductsPage: React.FC = () => {
 
       setCategories(categoriesRes.data || []);
       setBrands(brandsRes.data || []);
-    } catch (error) {
-      console.error('Error fetching filter data:', error);
+    } catch {
       setCategories([]);
       setBrands([]);
     }
@@ -122,7 +142,7 @@ const ProductsPage: React.FC = () => {
       
       const params = new URLSearchParams({
         page: currentPage.toString(),
-        page_size: pageSize.toString(),
+        page_size: itemsPerPage.toString(),
         ...(searchTerm && { search: searchTerm }),
         ...(statusFilter && { status: statusFilter }),
         ...(categoryFilter && { category: categoryFilter }),
@@ -134,17 +154,16 @@ const ProductsPage: React.FC = () => {
       
       setProducts(data.results || []);
       setTotalCount(data.count || 0);
-      setTotalPages(Math.ceil((data.count || 0) / pageSize));
+      setTotalPages(Math.ceil((data.count || 0) / itemsPerPage));
       
-    } catch (error) {
-      console.error('Error fetching products:', error);
+    } catch {
       setProducts([]);
       setTotalCount(0);
       setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchTerm, statusFilter, categoryFilter, brandFilter]);
+  }, [currentPage, itemsPerPage, searchTerm, statusFilter, categoryFilter, brandFilter]);
 
   // Load data on mount and filter changes
   useEffect(() => {
@@ -163,6 +182,15 @@ const ProductsPage: React.FC = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, categoryFilter, brandFilter]);
+
+  // Check for success message in URL parameters
+  useEffect(() => {
+    if (router.query.success) {
+      showSuccess('Success', router.query.success as string);
+      // Clean up URL
+      router.replace('/merchant/shop-products', undefined, { shallow: true });
+    }
+  }, [router.query.success, showSuccess, router]);
 
   // Handle individual product actions
   const handleAction = useCallback(async (action: 'edit' | 'delete' | 'duplicate' | 'view', productId: string) => {
@@ -186,23 +214,43 @@ const ProductsPage: React.FC = () => {
           break;
           
         case 'delete':
-          if (confirm('Are you sure you want to delete this product? This action cannot be undone.')) {
-            await api.delete(`/products/shop-products/${productId}/`);
-            fetchProducts(); // Refresh the list
-          }
-          break;
+          setConfirmModal({
+            isOpen: true,
+            title: 'Delete Product',
+            message: 'Are you sure you want to delete this product? This action cannot be undone.',
+            type: 'danger',
+            onConfirm: async () => {
+              try {
+                await api.delete(`/products/shop-products/${productId}/`);
+                fetchProducts(); // Refresh the list
+                showSuccess('Product Deleted', 'Product deleted successfully!');
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+              } catch {
+                showError('Delete Failed', 'Failed to delete product. Please try again.');
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+              } finally {
+                setActionLoading(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(productId);
+                  return newSet;
+                });
+              }
+            }
+          });
+          return; // Don't clear loading state yet
       }
-    } catch (error) {
-      console.error(`Error performing ${action}:`, error);
-      // TODO: Add proper error handling/notifications
+    } catch {
+      showError('Action Failed', 'Failed to perform action. Please try again.');
     } finally {
-      setActionLoading(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(productId);
-        return newSet;
-      });
+      if (action !== 'delete') {
+        setActionLoading(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(productId);
+          return newSet;
+        });
+      }
     }
-  }, [router, fetchProducts]);
+  }, [router, fetchProducts, showSuccess, showError, setConfirmModal]);
 
   // Handle bulk actions
   const handleBulkAction = useCallback(async () => {
@@ -240,14 +288,14 @@ const ProductsPage: React.FC = () => {
       setSelectedProducts(new Set());
       setBulkAction('');
       fetchProducts();
+      showSuccess('Bulk Action Complete', `Successfully ${actionText.toLowerCase()} ${selectedArray.length} products.`);
       
-    } catch (error) {
-      console.error('Error performing bulk action:', error);
-      // TODO: Add proper error handling/notifications
+    } catch {
+      showError('Bulk Action Failed', 'Failed to perform bulk action. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [bulkAction, selectedProducts, bulkActionOptions, fetchProducts]);
+  }, [bulkAction, selectedProducts, bulkActionOptions, fetchProducts, showSuccess, showError]);
 
   // Toggle product selection
   const toggleProductSelection = useCallback((productId: string) => {
@@ -608,62 +656,13 @@ const ProductsPage: React.FC = () => {
                             </td>
                             
                             <td className="px-6 py-4">
-                              <div className="flex items-center space-x-2">
-                                {/* View Button */}
-                                <button
-                                  onClick={() => handleAction('view', product.product_id)}
-                                  disabled={actionLoading.has(product.product_id)}
-                                  className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                                  title="View product"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                  </svg>
-                                </button>
-                                
-                                {/* Edit Button */}
-                                <button
-                                  onClick={() => handleAction('edit', product.product_id)}
-                                  disabled={actionLoading.has(product.product_id)}
-                                  className="p-2 text-gray-400 hover:text-green-600 transition-colors"
-                                  title="Edit product"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                  </svg>
-                                </button>
-                                
-                                {/* Duplicate Button */}
-                                <button
-                                  onClick={() => handleAction('duplicate', product.product_id)}
-                                  disabled={actionLoading.has(product.product_id)}
-                                  className="p-2 text-gray-400 hover:text-purple-600 transition-colors"
-                                  title="Duplicate product"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                  </svg>
-                                </button>
-                                
-                                {/* Delete Button */}
-                                <button
-                                  onClick={() => handleAction('delete', product.product_id)}
-                                  disabled={actionLoading.has(product.product_id)}
-                                  className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                                  title="Delete product"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </button>
-                                
-                                {actionLoading.has(product.product_id) && (
-                                  <div className="ml-2">
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
-                                  </div>
-                                )}
-                              </div>
+                              <ActionButtonsGroup
+                                productId={product.product_id}
+                                onAction={handleAction}
+                                isLoading={actionLoading.has(product.product_id)}
+                                loadingActions={actionLoading}
+                                size="md"
+                              />
                             </td>
                           </tr>
                         ))}
@@ -671,71 +670,54 @@ const ProductsPage: React.FC = () => {
                     </table>
                   </div>
                   
-                  {/* Pagination */}
-                  {totalPages > 1 && (
-                    <div className="bg-white px-6 py-4 border-t border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm text-gray-700">
-                          Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} products
-                        </div>
-                        
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                            disabled={currentPage === 1}
-                            className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Previous
-                          </button>
-                          
-                          {/* Page Numbers */}
-                          <div className="flex items-center space-x-1">
-                            {Array.from({ length: Math.min(totalPages, 7) }, (_, index) => {
-                              let pageNumber;
-                              
-                              if (totalPages <= 7) {
-                                pageNumber = index + 1;
-                              } else if (currentPage <= 4) {
-                                pageNumber = index + 1;
-                              } else if (currentPage >= totalPages - 3) {
-                                pageNumber = totalPages - 6 + index;
-                              } else {
-                                pageNumber = currentPage - 3 + index;
-                              }
-                              
-                              return (
-                                <button
-                                  key={pageNumber}
-                                  onClick={() => setCurrentPage(pageNumber)}
-                                  className={`px-3 py-2 text-sm font-medium rounded-lg ${
-                                    currentPage === pageNumber
-                                      ? 'text-white bg-green-600 border-green-600'
-                                      : 'text-gray-500 bg-white border-gray-300 hover:bg-gray-50'
-                                  } border`}
-                                >
-                                  {pageNumber}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          
-                          <button
-                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                            disabled={currentPage === totalPages}
-                            className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Next
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  {/* Enhanced Pagination */}
+                  <div className="bg-white px-6 py-4 border-t border-gray-200">
+                    <EnhancedPagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      totalItems={totalCount}
+                      itemsPerPage={itemsPerPage}
+                      onPageChange={setCurrentPage}
+                      onItemsPerPageChange={(newItemsPerPage) => {
+                        setItemsPerPage(newItemsPerPage);
+                        setCurrentPage(1); // Reset to first page when changing items per page
+                      }}
+                      showItemsPerPage={true}
+                      showJumpToPage={true}
+                      className="w-full"
+                    />
+                  </div>
                 </>
               )}
             </Card>
           </main>
         </div>
       </div>
+      
+      {/* Secure Confirmation Modal */}
+      <SecureConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        type={confirmModal.type}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        isLoading={false}
+      />
+      
+      {/* Render notifications */}
+      {notifications.map((notification) => (
+        <Notification
+          key={notification.id}
+          type={notification.type}
+          title={notification.title}
+          message={notification.message}
+          duration={notification.duration}
+          position={notification.position}
+          isVisible={true}
+          onClose={() => hideNotification(notification.id)}
+        />
+      ))}
     </MerchantAuthGuard>
   );
 };

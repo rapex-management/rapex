@@ -19,6 +19,13 @@ urlpatterns = [
     path('shop-products/brands/create/', views.create_merchant_brand, name='create-merchant-brand'),
     path('shop-products/upload-image/', views.upload_product_image, name='upload-product-image'),
     
+    # ShopProduct bulk operations
+    path('shop-products/bulk-upload/', views.bulk_upload_products, name='shop-product-bulk-upload'),
+    path('shop-products/csv-template/', views.download_csv_template, name='shop-product-csv-template'),
+    
+    # Add direct upload-image endpoint to match frontend expectations
+    path('upload-image/', views.upload_product_image, name='upload-image'),
+    
     # Product images
     path('<uuid:product_id>/images/', views.ProductImageListCreateView.as_view(), name='product-images'),
     path('images/<uuid:image_id>/', views.ProductImageDetailView.as_view(), name='product-image-detail'),
